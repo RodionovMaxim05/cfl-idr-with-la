@@ -1,5 +1,5 @@
 #include "extract_edges.h"
-#include "../grammar/grammar.h"
+#include "grammar/grammar.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>

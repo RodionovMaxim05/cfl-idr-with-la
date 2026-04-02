@@ -1,8 +1,8 @@
 #include "condensate_graph.h"
-#include "../approximations/approximation.h"
-#include "../approximations/mutual_refinement.h"
 #include "LAGraph.h"
 #include "LAGraphX.h"
+#include "approximation/approximation.h"
+#include "approximation/mutual_refinement.h"
 
 GrB_Info condensate_from_under_approx(const MRGraph *graph, GrB_Matrix under_approx,
 									  CondensationResult *out, char *msg) {

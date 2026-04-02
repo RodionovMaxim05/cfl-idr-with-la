@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../approximations/mr_graph.h"
 #include "GraphBLAS.h"
+#include "approximation/mr_graph.h"
 
 typedef struct {
 	MRGraph condensed_graph;

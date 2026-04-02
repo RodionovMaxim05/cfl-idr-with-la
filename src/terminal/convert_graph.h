@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GraphBLAS.h"
-#include "approximations/mr_graph.h"
+#include "approximation/mr_graph.h"
 #include "symbol_list.h"
 #include "terminal_format.h"
 

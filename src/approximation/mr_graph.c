@@ -37,21 +37,21 @@ void mr_graph_print(const MRGraph *g) {
 
 	for (int64_t i = 0; i < g->n_par; i++) {
 		printf("  open_par[%ld]:", i);
-		GxB_print(g->open_par[i], 1);
+		GxB_print(g->open_par[i], 2);
 		printf("  close_par[%ld]:", i);
-		GxB_print(g->close_par[i], 1);
+		GxB_print(g->close_par[i], 2);
 	}
 
 	for (int64_t i = 0; i < g->n_bra; i++) {
 		printf("  open_bra[%ld]:", i);
-		GxB_print(g->open_bra[i], 1);
+		GxB_print(g->open_bra[i], 2);
 		printf("  close_bra[%ld]:", i);
-		GxB_print(g->close_bra[i], 1);
+		GxB_print(g->close_bra[i], 2);
 	}
 
 	if (g->normal != NULL) {
 		printf("  normal:");
-		GxB_print(g->normal, 1);
+		GxB_print(g->normal, 2);
 	} else {
 		printf("  normal:\n  NULL\n");
 	}

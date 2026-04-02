@@ -1,9 +1,10 @@
 #include "mutual_refinement.h"
-#include "../grammar/grammar.h"
-#include "../utils/extract_edges.h"
-#include "../utils_LAGraph.h"
 #include "LAGraph.h"
 #include "approximation.h"
+#include "grammar/grammar.h"
+#include "utils/extract_edges.h"
+#include "utils/extract_paths.h"
+#include "utils_LAGraph.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -102,10 +103,7 @@ static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
 	}
 
 	GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n);
-	for (int64_t t = 0; t < grammar.terms_count; t++) {
-		GrB_Matrix_eWiseAdd_BinaryOp(*out_reachability, NULL, NULL, GrB_LOR,
-									 *out_reachability, out_edges[t], NULL);
-	}
+	extractNonTrivialPaths(paths[0], graph, out_reachability);
 
 cleanup:
 	for (int64_t a = 0; a < grammar.nonterms_count; a++) {
