@@ -1,10 +1,11 @@
 #include "approximation.h"
-#include "../grammar/grammar.h"
-#include "../graph/condensate_graph.h"
-#include "../utils/extract_edges.h"
-#include "../utils_LAGraph.h"
 #include "LAGraph.h"
 #include "LAGraphX.h"
+#include "grammar/grammar.h"
+#include "graph/condensate_graph.h"
+#include "utils/extract_edges.h"
+#include "utils/extract_paths.h"
+#include "utils_LAGraph.h"
 
 GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
@@ -25,7 +26,7 @@ GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	return adj;
 }
 
-GrB_Info getUnderApprox(const MRGraph *graph, GrB_Matrix *result) {
+GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 	char msg[LAGRAPH_MSG_LEN];
 	GrB_Info info = GrB_SUCCESS;
 
@@ -44,23 +45,8 @@ GrB_Info getUnderApprox(const MRGraph *graph, GrB_Matrix *result) {
 		goto cleanup;
 	}
 
-	GrB_Matrix *result_matrices =
-		(GrB_Matrix *)malloc(grammar.terms_count * sizeof(GrB_Matrix));
-	info =
-		extractEdgesFromOutputs(paths, adj_matrices, grammar, graph->n,
-								GrB_INDEX_MAX, GrB_INDEX_MAX, result_matrices, msg);
-	if (info != GrB_SUCCESS) {
-		free((void *)result_matrices);
-		goto cleanup;
-	}
-
 	GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
-	for (int64_t t = 0; t < grammar.terms_count; t++) {
-		GrB_Matrix_eWiseAdd_BinaryOp(*result, NULL, NULL, GrB_LOR, *result,
-									 result_matrices[t], NULL);
-		GrB_Matrix_free(&result_matrices[t]);
-	}
-	free((void *)result_matrices);
+	extractNonTrivialPaths(paths[0], graph, result);
 
 cleanup:
 	for (int64_t a = 0; a < grammar.nonterms_count; a++) {
@@ -77,7 +63,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info getMROverApprox(const MRGraph *graph, MRGrammarType grammar_type,
+GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 						 GrB_Matrix under_approx, GrB_Matrix *result) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
