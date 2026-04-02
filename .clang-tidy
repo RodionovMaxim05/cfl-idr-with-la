@@ -1,0 +1,24 @@
+Checks: >
+  -*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  bugprone-*,
+  -readability-isolate-declaration,
+  -readability-identifier-length,
+  -modernize-macro-to-enum,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -bugprone-easily-swappable-parameters
+
+WarningsAsErrors: '*'
+
+CheckOptions:
+    - key: readability-function-cognitive-complexity.Threshold
+      value: 65
+    - key: bugprone-easily-swappable-parameters.MinimumLength
+      value: 4
+    - key: readability-identifier-length.IgnoredLoopCounterNames
+      value: '^(i|j|k|x|y|t|a|r)$'
+    - key: readability-identifier-length.MinimumVariableNameLength
+      value: 2
