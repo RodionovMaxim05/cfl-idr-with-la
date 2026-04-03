@@ -1,7 +1,7 @@
 BUILD_DIR = build
 TARGET = cfl-idr-with-la
 
-.PHONY: all release run clean rebuild test memcheck format lint
+.PHONY: all release run clean rebuild test memcheck test-memcheck format lint
 
 all:
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
@@ -33,6 +33,11 @@ memcheck:
 		--track-origins=yes \
 		--error-exitcode=1 \
 		./$(BUILD_DIR)/$(TARGET)
+
+test-memcheck: clean
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
+	cmake --build $(BUILD_DIR) -j$(nproc)
+	cd $(BUILD_DIR) && ctest -T memcheck --verbose --output-on-failure
 
 format:
 	find . -type f \( -name "*.c" -o -name "*.h" \) \
