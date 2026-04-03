@@ -1,7 +1,7 @@
 #include "mutual_refinement.h"
 #include "LAGraph.h"
 #include "approximation.h"
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 #include "utils_LAGraph.h"
@@ -135,7 +135,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 	// Alpha phase
 
 	MRGrammar_t alpha_grammar =
-		dyck_alpha_grammar(graph->n_par, graph->n_bra, has_normal);
+		get_alpha_grammar(grammar_type, graph->n_par, graph->n_bra, has_normal);
 
 	GrB_Matrix alpha_reach = NULL;
 	GrB_Matrix *alpha_edges = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
@@ -152,8 +152,8 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 	// Beta phase
 
-	MRGrammar_t beta_grammar =
-		dyck_beta_grammar(alpha_graph.n_par, alpha_graph.n_bra, has_normal);
+	MRGrammar_t beta_grammar = get_beta_grammar(grammar_type, alpha_graph.n_par,
+												alpha_graph.n_bra, has_normal);
 
 	GrB_Matrix beta_reach = NULL;
 	GrB_Matrix *beta_edges = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
