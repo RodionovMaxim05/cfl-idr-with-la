@@ -114,7 +114,12 @@ int main(void) {
 	RUN_FIG_TEST(figure5, "under_approx.txt");
 	RUN_FIG_TEST(figure9, "under_approx.txt");
 	RUN_FIG_TEST(figure10, "under_approx.txt");
-	RUN_FIG_TEST(figure11, "under_approx.txt");
+	RUN_FIG_TEST(loozfon, "under_approx.txt");
+	RUN_FIG_TEST(faketaobao, "under_approx.txt");
+	RUN_FIG_TEST(jollyserv, "under_approx.txt");
+	RUN_FIG_TEST(zertsecurity, "under_approx.txt");
+	RUN_FIG_TEST(fakebanker, "under_approx.txt");
+	RUN_FIG_TEST(uranai, "under_approx.txt");
 
 	LAGraph_Finalize(msg);
 	return 0;

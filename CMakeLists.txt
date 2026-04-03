@@ -22,5 +22,5 @@ target_link_libraries(cfl_lib PRIVATE
 add_executable(cfl-idr-with-la src/main.c)
 target_link_libraries(cfl-idr-with-la PRIVATE cfl_lib)
 
-enable_testing()
+include(CTest)
 add_subdirectory(tests)
