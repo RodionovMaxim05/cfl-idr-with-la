@@ -26,7 +26,7 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
 	int64_t r = 0;
 
-	// S -> eps
+	// S -> epsrules_count
 	rules[r++] = (LAGraph_rule_WCNF){NT_S, -1, -1, 0};
 
 	if (has_normal) {
@@ -80,6 +80,177 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		// D_i -> `]_i`
 		rules[r++] = (LAGraph_rule_WCNF){D_i, bra_close, -1, 0};
 	}
+
+	MRGrammar_t gr;
+	gr.rules = rules;
+	gr.rules_count = rules_count;
+	gr.terms_count = terms_count;
+	gr.nonterms_count = nonterms_count;
+	return gr;
+}
+MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
+										bool has_normal, int64_t k) {
+	int64_t num_states = (int64_t)1 << k; // 2^k
+
+	// Nonterminal counts:
+	// S_mask:          num_states
+	// A_i, B_i:        2 * n_par
+	// C_i, D_i:        2 * n_bra
+	// E_{i,im,m}, G_{i,im,m}: for each par i, for each (innerMask, currentMask) pair
+	//   we need E and G.
+	//   Total: 2 * n_par * num_states * num_states (E and G for each combination)
+	// N (if has_normal): 1
+	int64_t nonterms_count = num_states + 2 * n_par + 2 * n_bra +
+							 2 * n_par * num_states * num_states +
+							 (has_normal ? 1 : 0);
+
+	// Terminal counts:
+	// par_open_i, par_close_i: 2 * n_par
+	// bra_open_i, bra_close_i: 2 * n_bra
+	// `normal` (if has_normal): 1
+	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
+
+	// Rules count:
+	// S_0 -> eps:                          1
+	// S_m -> N S_m (for each m):           num_states (if has_normal)
+	// N -> `normal`:                       1          (if has_normal)
+	// For each brId, each mask:
+	//   S_m -> C_i S_next:                 n_bra * num_states
+	//   S_m -> D_i S_next:                 n_bra * num_states
+	// C_i -> `[_i`, D_i -> `]_i`:          2 * n_bra
+	// For each parId, each (innerMask, currentMask):
+	//   S_m -> A_i E_{i,im,m}:             n_par * num_states * num_states
+	//   E_{i,im,m} -> S_im G_{i,im,m}:     n_par * num_states * num_states
+	//   G_{i,im,m} -> B_i S_next:          n_par * num_states * num_states
+	// 	A_i -> `(_i`, B_i -> `)_i`:         2 * n_par
+	int64_t rules_count = 1 + (has_normal ? num_states + 1 : 0) +
+						  2 * n_bra * num_states + 2 * n_bra +
+						  3 * n_par * num_states * num_states + 2 * n_par;
+
+	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	int64_t r = 0;
+
+// === Nonterminal index helpers ===
+
+// S_mask: index = mask (0 .. num_states-1)
+#define NT_S_MASK(mask) ((int32_t)(mask))
+
+// A_i (open par):  num_states + 2*i
+#define NT_A(i) ((int32_t)(num_states + 2 * (i)))
+// B_i (close par): num_states + 2*i + 1
+#define NT_B(i) ((int32_t)(num_states + 2 * (i) + 1))
+
+// C_i (open bra):  num_states + 2*n_par + 2*i
+#define NT_C(i) ((int32_t)(num_states + 2 * n_par + 2 * (i)))
+// D_i (close bra): num_states + 2*n_par + 2*i + 1
+#define NT_D(i) ((int32_t)(num_states + 2 * n_par + 2 * (i) + 1))
+
+	int64_t eg_base = num_states + 2 * n_par + 2 * n_bra;
+
+// E_{i, innerMask, currentMask}: base + (i * num_states * num_states + innerMask
+// * num_states + currentMask) * 2
+#define NT_E(i, im, cm)                                                             \
+	((int32_t)(eg_base +                                                            \
+			   ((i) * num_states * num_states + (im) * num_states + (cm)) * 2))
+// G_{i, innerMask, currentMask}: base + (i * num_states * num_states + innerMask
+// * num_states + currentMask) * 2 + 1
+#define NT_G(i, im, cm)                                                             \
+	((int32_t)(eg_base +                                                            \
+			   ((i) * num_states * num_states + (im) * num_states + (cm)) * 2 + 1))
+
+	// N (normal auxiliary, if has_normal): last nonterminal
+	int32_t NT_NORMAL = (int32_t)(nonterms_count - 1);
+
+// === Terminal index helpers ===
+
+// par_open_i:  2*i
+#define TERM_PAR_OPEN(i) ((int32_t)(2 * (i)))
+// par_close_i: 2*i + 1
+#define TERM_PAR_CLOSE(i) ((int32_t)(2 * (i) + 1))
+
+// bra_open_i:  2*n_par + 2*i
+#define TERM_BRA_OPEN(i) ((int32_t)(2 * n_par + 2 * (i)))
+// bra_close_i: 2*n_par + 2*i + 1
+#define TERM_BRA_CLOSE(i) ((int32_t)(2 * n_par + 2 * (i) + 1))
+
+	// `normal`: last terminal
+	int32_t TERM_NORMAL = (int32_t)(terms_count - 1);
+
+	// --- S_0 -> eps ---
+	rules[r++] = (LAGraph_rule_WCNF){NT_S_MASK(0), -1, -1, 0};
+
+	// --- Normal rules ---
+	if (has_normal) {
+		// N -> `normal`
+		rules[r++] = (LAGraph_rule_WCNF){NT_NORMAL, TERM_NORMAL, -1, 0};
+		// S_m -> N S_m  (for each mask)
+		for (int64_t m = 0; m < num_states; m++) {
+			rules[r++] =
+				(LAGraph_rule_WCNF){NT_S_MASK(m), NT_NORMAL, NT_S_MASK(m), 0};
+		}
+	}
+
+	// --- Bracket rules (beta) ---
+
+	// C_i -> `[_i`,  D_i -> `]_i`
+	for (int64_t i = 0; i < n_bra; i++) {
+		rules[r++] = (LAGraph_rule_WCNF){NT_C(i), TERM_BRA_OPEN(i), -1, 0};
+		rules[r++] = (LAGraph_rule_WCNF){NT_D(i), TERM_BRA_CLOSE(i), -1, 0};
+	}
+
+	// S_m -> C_i S_{m ^ bit}
+	// S_m -> D_i S_{m ^ bit}
+	// bit for bracket i = 1 << (i % k)
+	for (int64_t i = 0; i < n_bra; i++) {
+		int64_t bit = (int64_t)1 << (i % k);
+		for (int64_t m = 0; m < num_states; m++) {
+			int64_t next = m ^ bit;
+			rules[r++] =
+				(LAGraph_rule_WCNF){NT_S_MASK(m), NT_C(i), NT_S_MASK(next), 0};
+			rules[r++] =
+				(LAGraph_rule_WCNF){NT_S_MASK(m), NT_D(i), NT_S_MASK(next), 0};
+		}
+	}
+
+	// --- Parenthesis rules (alpha) ---
+
+	// A_i -> `(_i`,  B_i -> `)_i`
+	for (int64_t i = 0; i < n_par; i++) {
+		rules[r++] = (LAGraph_rule_WCNF){NT_A(i), TERM_PAR_OPEN(i), -1, 0};
+		rules[r++] = (LAGraph_rule_WCNF){NT_B(i), TERM_PAR_CLOSE(i), -1, 0};
+	}
+
+	// For each par i, currentMask m, innerMask im:
+	//   nextMask = m ^ im
+	//   S_m        -> A_i E_{i,im,m}
+	//   E_{i,im,m} -> S_im G_{i,im,m}
+	//   G_{i,im,m} -> B_i S_next
+	for (int64_t i = 0; i < n_par; i++) {
+		for (int64_t m = 0; m < num_states; m++) {
+			for (int64_t im = 0; im < num_states; im++) {
+				int64_t next = m ^ im;
+				rules[r++] =
+					(LAGraph_rule_WCNF){NT_S_MASK(m), NT_A(i), NT_E(i, im, m), 0};
+				rules[r++] = (LAGraph_rule_WCNF){NT_E(i, im, m), NT_S_MASK(im),
+												 NT_G(i, im, m), 0};
+				rules[r++] =
+					(LAGraph_rule_WCNF){NT_G(i, im, m), NT_B(i), NT_S_MASK(next), 0};
+			}
+		}
+	}
+
+// Cleanup macros
+#undef NT_S_MASK
+#undef NT_A
+#undef NT_B
+#undef NT_C
+#undef NT_D
+#undef NT_E
+#undef NT_G
+#undef TERM_PAR_OPEN
+#undef TERM_PAR_CLOSE
+#undef TERM_BRA_OPEN
+#undef TERM_BRA_CLOSE
 
 	MRGrammar_t gr;
 	gr.rules = rules;
