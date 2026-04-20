@@ -26,7 +26,7 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
 	int64_t r = 0;
 
-	// S -> epsrules_count
+	// S -> eps
 	rules[r++] = (LAGraph_rule_WCNF){NT_S, -1, -1, 0};
 
 	if (has_normal) {
