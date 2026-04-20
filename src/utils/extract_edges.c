@@ -84,7 +84,9 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 		GrB_Matrix_extractTuples(rows, cols, val_void, &nnz, paths[NT_S]);
 
 		for (GrB_Index k = 0; k < nnz; k++) {
-			stack_push(&stack, rows[k], cols[k], NT_S);
+			if (rows[k] != cols[k]) {
+				stack_push(&stack, rows[k], cols[k], NT_S);
+			}
 		}
 
 		LAGraph_Free((void **)&rows, msg);
@@ -159,6 +161,17 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 
 					int32_t B = grammar.rules[r].prod_A;
 					int32_t C = grammar.rules[r].prod_B;
+
+					// Check that both subpaths exist in paths
+					AllPathsElem dummy;
+					GrB_Info b_info =
+						GrB_Matrix_extractElement_UDT(&dummy, paths[B], i, m);
+					GrB_Info c_info =
+						GrB_Matrix_extractElement_UDT(&dummy, paths[C], m, j);
+
+					if (b_info == GrB_NO_VALUE || c_info == GrB_NO_VALUE) {
+						continue;
+					}
 
 					stack_push(&stack, i, m, B);
 					stack_push(&stack, m, j, C);
