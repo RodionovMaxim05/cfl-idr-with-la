@@ -4,18 +4,22 @@ project(cfl-idr-with-la LANGUAGES C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(LAGRAPH_DIR ${CMAKE_SOURCE_DIR}/vendor/lagraph)
+set(LAGRAPH_DIR "" CACHE PATH "Path to LAGraph source directory")
+if(NOT LAGRAPH_DIR)
+    message(FATAL_ERROR "Please set LAGRAPH_DIR: cmake -DLAGRAPH_DIR=/path/to/lagraph ..")
+endif()
+
+set(LAGRAPH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LAGRAPH_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(LAGRAPH_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(${LAGRAPH_DIR} lagraph_build)
 
 add_subdirectory(src)
 
-target_include_directories(cfl_lib PUBLIC
-    ${LAGRAPH_DIR}/include/suitesparse
-    /usr/local/include/suitesparse
-)
-
 target_link_libraries(cfl_lib PRIVATE
-    ${LAGRAPH_DIR}/lib/liblagraph.so.1.2.1
-    ${LAGRAPH_DIR}/lib/liblagraphx.so.1.2.1
+    LAGraph
+    LAGraphX
     /usr/local/lib/libgraphblas.so
 )
 
