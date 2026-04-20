@@ -224,7 +224,7 @@ static void test_normal_matrix(void) {
 	free_matrix_set(&ms);
 }
 
-// Empty close matrix registers the pair
+// Empty closure matrix does not register a pair
 static void test_empty_close_registers_pair(void) {
 	GrB_Index n = 3;
 	char *labels[] = {"op_0", "cp_0"};
@@ -238,13 +238,11 @@ static void test_empty_close_registers_pair(void) {
 								   &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
-	assert(out.n_par == 1);
-	assert(out.open_par[0] == ms.matrices[0]);
-	assert(out.close_par[0] == ms.matrices[1]);
+	assert(out.n_par == 0);
 	assert(out.open_bra == NULL);
 	assert(out.close_bra == NULL);
-	assert(matrix_nvals(out.close_par[0]) == 0);
-	assert(matrix_has_edge(out.open_par[0], 1, 0));
+	assert(out.open_par == NULL);
+	assert(out.close_bra == NULL);
 
 	free_mr_graph_arrays(&out);
 	free_matrix_set(&ms);

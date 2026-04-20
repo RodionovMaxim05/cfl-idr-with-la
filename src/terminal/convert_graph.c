@@ -1,4 +1,6 @@
 #include "convert_graph.h"
+
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,28 +10,20 @@
 
 typedef struct {
 	char id[ID_MAX_LEN];
+	bool has_open;
+	bool has_close;
+	GrB_Matrix open_mat;
+	GrB_Matrix close_mat;
 	int idx;
 	UT_hash_handle hh;
-} IdEntry;
+} BracketEntry;
 
-static void hashmap_free(IdEntry **map) {
-	IdEntry *entry, *tmp;
+static void hashmap_free(BracketEntry **map) {
+	BracketEntry *entry, *tmp;
 	HASH_ITER(hh, *map, entry, tmp) {
 		HASH_DEL(*map, entry);
 		free(entry);
 	}
-}
-
-static IdEntry *get_or_create(IdEntry **map, const char *id, size_t *count) {
-	IdEntry *entry = NULL;
-	HASH_FIND_STR(*map, id, entry);
-	if (!entry) {
-		entry = malloc(sizeof(IdEntry));
-		strncpy(entry->id, id, sizeof(entry->id) - 1);
-		entry->idx = (int)(*count)++;
-		HASH_ADD_STR(*map, id, entry);
-	}
-	return entry;
 }
 
 GrB_Info build_mr_graph(GrB_Matrix *matrices, const SymbolList *symbol_list,
@@ -38,24 +32,18 @@ GrB_Info build_mr_graph(GrB_Matrix *matrices, const SymbolList *symbol_list,
 		return GrB_INVALID_VALUE;
 	}
 
-	IdEntry *par_map = NULL;
-	IdEntry *bra_map = NULL;
-	size_t par_count = 0;
-	size_t bra_count = 0;
+	BracketEntry *par_map = NULL;
+	BracketEntry *bra_map = NULL;
 	bool has_normal = false;
 
 	for (size_t i = 0; i < symbol_list->count; i++) {
 		const char *label = symbol_list->symbols[i].label;
 		BracketType type = fmt->get_type(label);
-		int is_open = fmt->is_open(label);
 
 		if (type == BRACKET_TYPE_UNKNOWN) {
 			if (strcmp(label, "normal") == 0) {
 				has_normal = true;
 			}
-			continue;
-		}
-		if (is_open != 1) {
 			continue;
 		}
 
@@ -65,81 +53,72 @@ GrB_Info build_mr_graph(GrB_Matrix *matrices, const SymbolList *symbol_list,
 			continue;
 		}
 
-		char id[256];
+		char id[ID_MAX_LEN];
 		fmt->extract_id(label, id, sizeof(id));
 		if (id[0] == '\0') {
 			continue;
 		}
 
-		if (type == BRACKET_TYPE_PARENTHESES) {
-			get_or_create(&par_map, id, &par_count);
-		} else if (type == BRACKET_TYPE_BRACKETS) {
-			get_or_create(&bra_map, id, &bra_count);
+		BracketEntry **map =
+			(type == BRACKET_TYPE_PARENTHESES) ? &par_map : &bra_map;
+		BracketEntry *entry = NULL;
+		HASH_FIND_STR(*map, id, entry);
+		if (!entry) {
+			entry = calloc(1, sizeof(BracketEntry));
+			strncpy(entry->id, id, sizeof(entry->id) - 1);
+			HASH_ADD_STR(*map, id, entry);
+		}
+
+		if (fmt->is_open(label)) {
+			entry->has_open = true;
+			entry->open_mat = matrices[i];
+		} else {
+			entry->has_close = true;
+			entry->close_mat = matrices[i];
+		}
+	}
+
+	int64_t valid_par = 0, valid_bra = 0;
+	BracketEntry *e, *tmp;
+	HASH_ITER(hh, par_map, e, tmp) {
+		if (e->has_open && e->has_close) {
+			e->idx = valid_par++;
+		}
+	}
+	HASH_ITER(hh, bra_map, e, tmp) {
+		if (e->has_open && e->has_close) {
+			e->idx = valid_bra++;
 		}
 	}
 
 	out->n = n;
-	out->n_par = (int64_t)par_count;
-	out->n_bra = (int64_t)bra_count;
-	out->open_par =
-		par_count ? (GrB_Matrix *)malloc(par_count * sizeof(GrB_Matrix)) : NULL;
-	out->close_par =
-		par_count ? (GrB_Matrix *)malloc(par_count * sizeof(GrB_Matrix)) : NULL;
-	out->open_bra =
-		bra_count ? (GrB_Matrix *)malloc(bra_count * sizeof(GrB_Matrix)) : NULL;
-	out->close_bra =
-		bra_count ? (GrB_Matrix *)malloc(bra_count * sizeof(GrB_Matrix)) : NULL;
+	out->n_par = valid_par;
+	out->n_bra = valid_bra;
+
+	out->open_par = valid_par ? malloc(valid_par * sizeof(GrB_Matrix)) : NULL;
+	out->close_par = valid_par ? malloc(valid_par * sizeof(GrB_Matrix)) : NULL;
+	out->open_bra = valid_bra ? malloc(valid_bra * sizeof(GrB_Matrix)) : NULL;
+	out->close_bra = valid_bra ? malloc(valid_bra * sizeof(GrB_Matrix)) : NULL;
 	out->normal = NULL;
 
-	for (size_t i = 0; i < par_count; i++) {
-		out->open_par[i] = out->close_par[i] = NULL;
+	HASH_ITER(hh, par_map, e, tmp) {
+		if (e->has_open && e->has_close) {
+			out->open_par[e->idx] = e->open_mat;
+			out->close_par[e->idx] = e->close_mat;
+		}
 	}
-	for (size_t i = 0; i < bra_count; i++) {
-		out->open_bra[i] = out->close_bra[i] = NULL;
+	HASH_ITER(hh, bra_map, e, tmp) {
+		if (e->has_open && e->has_close) {
+			out->open_bra[e->idx] = e->open_mat;
+			out->close_bra[e->idx] = e->close_mat;
+		}
 	}
 
-	for (size_t i = 0; i < symbol_list->count; i++) {
-		const char *label = symbol_list->symbols[i].label;
-		BracketType type = fmt->get_type(label);
-		int is_open = fmt->is_open(label);
-
-		if (type == BRACKET_TYPE_UNKNOWN) {
-			if (has_normal && strcmp(label, "normal") == 0) {
+	if (has_normal) {
+		for (size_t i = 0; i < symbol_list->count; i++) {
+			if (strcmp(symbol_list->symbols[i].label, "normal") == 0) {
 				out->normal = matrices[i];
-			}
-			continue;
-		}
-		if (is_open == -1) {
-			continue;
-		}
-
-		char id[256];
-		fmt->extract_id(label, id, sizeof(id));
-		if (id[0] == '\0') {
-			continue;
-		}
-
-		if (type == BRACKET_TYPE_PARENTHESES) {
-			IdEntry *entry = NULL;
-			HASH_FIND_STR(par_map, id, entry);
-			if (!entry) {
-				continue;
-			}
-			if (is_open) {
-				out->open_par[entry->idx] = matrices[i];
-			} else {
-				out->close_par[entry->idx] = matrices[i];
-			}
-		} else if (type == BRACKET_TYPE_BRACKETS) {
-			IdEntry *entry = NULL;
-			HASH_FIND_STR(bra_map, id, entry);
-			if (!entry) {
-				continue;
-			}
-			if (is_open) {
-				out->open_bra[entry->idx] = matrices[i];
-			} else {
-				out->close_bra[entry->idx] = matrices[i];
+				break;
 			}
 		}
 	}
