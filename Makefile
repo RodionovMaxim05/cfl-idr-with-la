@@ -1,14 +1,20 @@
 BUILD_DIR = build
 TARGET = cfl-idr-with-la
 
+ifndef LAGRAPH_DIR
+$(error LAGRAPH_DIR is not set. Usage: make LAGRAPH_DIR=/path/to/lagraph)
+endif
+
 .PHONY: all release run clean rebuild test memcheck test-memcheck format lint
 
-all:
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
+all: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) -j$(nproc)
 
+$(BUILD_DIR)/CMakeCache.txt:
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug -DLAGRAPH_DIR=$(LAGRAPH_DIR)
+
 release:
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DLAGRAPH_DIR=$(LAGRAPH_DIR)
 	cmake --build $(BUILD_DIR) -j$(nproc)
 
 run: all
@@ -19,14 +25,10 @@ clean:
 
 rebuild: clean all
 
-test:
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DIR) -j$(nproc)
-	cd $(BUILD_DIR) && ctest --verbose --output-on-failure
+test: all
+	cd $(BUILD_DIR) && ctest --verbose --output-on-failure -L cfl-idr
 
-memcheck:
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DIR) -j$(nproc)
+memcheck: all
 	valgrind \
 		--leak-check=full \
 		--show-leak-kinds=all \
@@ -34,10 +36,8 @@ memcheck:
 		--error-exitcode=1 \
 		./$(BUILD_DIR)/$(TARGET)
 
-test-memcheck: clean
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DIR) -j$(nproc)
-	cd $(BUILD_DIR) && ctest -T memcheck --verbose --output-on-failure
+test-memcheck: clean all
+	cd $(BUILD_DIR) && ctest -T memcheck --verbose --output-on-failure -L cfl-idr
 
 format:
 	find . -type f \( -name "*.c" -o -name "*.h" \) \
