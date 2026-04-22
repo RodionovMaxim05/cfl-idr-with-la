@@ -40,6 +40,10 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
 MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 										bool has_normal, int64_t k);
 
+MRGrammar_t dyck_alpha_grammar_k_parity_exclude(int64_t n_par, int64_t n_bra,
+												bool has_normal, int64_t k,
+												int64_t ex_bra);
+
 MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
 
 MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_normal,
