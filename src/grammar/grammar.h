@@ -29,7 +29,7 @@ typedef struct {
 #define RSTATE_QE 0
 #define RSTATE_QO 1
 #define RSTATE_QC 2
-#define RSTATE_COUNT 3
+#define RSTATE_COUNT (int64_t)3
 
 MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
 
