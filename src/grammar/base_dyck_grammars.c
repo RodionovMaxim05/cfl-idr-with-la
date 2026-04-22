@@ -28,7 +28,7 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	int64_t r = 0;
 
 	// S -> eps
-	rules[r++] = (LAGraph_rule_WCNF){NT_S, -1, -1, 0};
+	rules[r++] = (LAGraph_rule_WCNF){NT_START, -1, -1, 0};
 
 	if (has_normal) {
 		// N - last nonterm
@@ -37,7 +37,7 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		int32_t term_normal = (int32_t)(terms_count - 1);
 
 		// S -> N S
-		rules[r++] = (LAGraph_rule_WCNF){NT_S, N, NT_S, 0};
+		rules[r++] = (LAGraph_rule_WCNF){NT_START, N, NT_START, 0};
 		// N -> `normal`
 		rules[r++] = (LAGraph_rule_WCNF){N, term_normal, -1, 0};
 	}
@@ -53,11 +53,11 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		int32_t par_close = (int32_t)(2 * i + 1);
 
 		// S -> A_i E_i
-		rules[r++] = (LAGraph_rule_WCNF){NT_S, A_i, E_i, 0};
+		rules[r++] = (LAGraph_rule_WCNF){NT_START, A_i, E_i, 0};
 		// E_i -> S G_i
-		rules[r++] = (LAGraph_rule_WCNF){E_i, NT_S, G_i, 0};
+		rules[r++] = (LAGraph_rule_WCNF){E_i, NT_START, G_i, 0};
 		// G_i -> B_i S
-		rules[r++] = (LAGraph_rule_WCNF){G_i, B_i, NT_S, 0};
+		rules[r++] = (LAGraph_rule_WCNF){G_i, B_i, NT_START, 0};
 		// A_i -> `(_i`
 		rules[r++] = (LAGraph_rule_WCNF){A_i, par_open, -1, 0};
 		// B_i -> `)_i`
@@ -75,11 +75,11 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		int32_t bra_close = (int32_t)(2 * n_par + 2 * i + 1);
 
 		// S -> C_i F_i
-		rules[r++] = (LAGraph_rule_WCNF){NT_S, C_i, F_i, 0};
+		rules[r++] = (LAGraph_rule_WCNF){NT_START, C_i, F_i, 0};
 		// F_i -> S H_i
-		rules[r++] = (LAGraph_rule_WCNF){F_i, NT_S, H_i, 0};
+		rules[r++] = (LAGraph_rule_WCNF){F_i, NT_START, H_i, 0};
 		// H_i -> D_i S
-		rules[r++] = (LAGraph_rule_WCNF){H_i, D_i, NT_S, 0};
+		rules[r++] = (LAGraph_rule_WCNF){H_i, D_i, NT_START, 0};
 		// C_i -> `[_i`
 		rules[r++] = (LAGraph_rule_WCNF){C_i, bra_open, -1, 0};
 		// D_i -> `]_i`
