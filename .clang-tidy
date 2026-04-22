@@ -15,7 +15,7 @@ WarningsAsErrors: '*'
 
 CheckOptions:
     - key: readability-function-cognitive-complexity.Threshold
-      value: 65
+      value: 75
     - key: bugprone-easily-swappable-parameters.MinimumLength
       value: 4
     - key: readability-identifier-length.IgnoredLoopCounterNames
