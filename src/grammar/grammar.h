@@ -33,6 +33,8 @@ typedef struct {
 
 MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
 
+MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
+
 MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal);
 
 MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
