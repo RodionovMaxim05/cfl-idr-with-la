@@ -370,8 +370,6 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		MRGraph *comp = &components[c];
 		GrB_Index *vmap = vertex_maps[c];
 
-		// GrB_Info info = GrB_Matrix_clear(*result); // DELETE
-
 		GrB_Matrix comp_result = NULL;
 		info =
 			mutual_refinement_single(comp, grammar_type, &comp_result, filter_empty);
@@ -384,7 +382,6 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		GrB_Matrix_nvals(&nnz, comp_result);
 
 		if (nnz > 0) {
-			// printf("Component %ld has %ld nonzeros\n", c, nnz);
 			GrB_Index *rows = malloc(nnz * sizeof(GrB_Index));
 			GrB_Index *cols = malloc(nnz * sizeof(GrB_Index));
 			GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result);
@@ -396,15 +393,6 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 			free(rows);
 			free(cols);
-
-			// printf("Component %lu edges: %lu\n", c, nnz);
-
-			// if (nnz == 15) {
-			// print_all_edges(comp);
-			// print_matrix_edges(*result, "Alpha Reachability");
-			// printf("====\n");
-			// }
-			// exit(0);
 		}
 		GrB_Matrix_free(&comp_result);
 	}
