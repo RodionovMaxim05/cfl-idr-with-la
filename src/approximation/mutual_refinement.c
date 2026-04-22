@@ -6,10 +6,12 @@
 #include <string.h>
 
 #include "approximation.h"
+#include "grammar/grammar.h"
 #include "grammar/grammar_analysis_utils.h"
 #include "graph/split_into_components.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
+#include "utils_LAGraph.h"
 
 static GrB_Index count_edges(const MRGraph *graph) {
 	GrB_Index total = 0, nvals = 0;
@@ -32,10 +34,44 @@ static GrB_Index count_edges(const MRGraph *graph) {
 	return total;
 }
 
-static GrB_Info matrix_intersect(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
-								 GrB_Index n, char *msg) {
-	GrB_Matrix_new(result, GrB_BOOL, n, n);
-	return GrB_Matrix_eWiseMult_BinaryOp(*result, NULL, NULL, GrB_LAND, A, B, NULL);
+static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
+								  GrB_Matrix C, GrB_Index n) {
+	*result = NULL;
+	GrB_Info info = GrB_Matrix_new(result, GrB_BOOL, n, n);
+	if (info != GrB_SUCCESS) {
+		return info;
+	}
+
+	if (C == NULL) {
+		return GrB_Matrix_eWiseMult_BinaryOp(*result, NULL, NULL, GrB_LAND, A, B,
+											 NULL);
+	}
+
+	GrB_Matrix temp;
+	info = GrB_Matrix_new(&temp, GrB_BOOL, n, n);
+	if (info != GrB_SUCCESS) {
+		goto cleanup;
+	}
+
+	info = GrB_Matrix_eWiseMult_BinaryOp(temp, NULL, NULL, GrB_LAND, A, B, NULL);
+	if (info != GrB_SUCCESS) {
+		goto cleanup;
+	}
+
+	info =
+		GrB_Matrix_eWiseMult_BinaryOp(*result, NULL, NULL, GrB_LAND, temp, C, NULL);
+	if (info != GrB_SUCCESS) {
+		goto cleanup;
+	}
+
+	GrB_Matrix_free(&temp);
+	return info;
+
+cleanup:
+	GrB_Matrix_free(result);
+	GrB_Matrix_free(&temp);
+	*result = NULL;
+	return info;
 }
 
 GrB_Info build_refined_graph(MRGraph *out, GrB_Matrix *result_matrices,
@@ -194,8 +230,9 @@ cleanup:
 	return info;
 }
 
-GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_type,
-								  GrB_Matrix *result, bool filter_empty) {
+static GrB_Info mutual_refinement_single(const MRGraph *graph,
+										 MRGrammarType grammar_type,
+										 GrB_Matrix *result, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	bool has_normal = (graph->normal != NULL);
@@ -222,7 +259,7 @@ GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_ty
 		goto cleanup_alpha;
 	}
 
-	MRGraph alpha_graph;
+	MRGraph alpha_graph = {0};
 	build_refined_graph(&alpha_graph, alpha_edges, graph->n_par, graph->n_bra,
 						has_normal, graph->n, filter_empty);
 
@@ -238,7 +275,10 @@ GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_ty
 												alpha_graph.n_bra, has_normal);
 
 	GrB_Matrix beta_reach = NULL;
-	GrB_Matrix *beta_edges = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
+	int64_t alpha_terms_count =
+		get_terms_count(alpha_graph.n_par, alpha_graph.n_bra, graph->normal);
+	GrB_Matrix *beta_edges =
+		(GrB_Matrix *)malloc(alpha_terms_count * sizeof(GrB_Matrix));
 
 	info = run_cfl_step(&alpha_graph, beta_grammar, &beta_reach, beta_edges, msg);
 	grammar_free(&beta_grammar);
@@ -246,21 +286,56 @@ GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_ty
 		goto cleanup_beta;
 	}
 
-	MRGraph beta_graph;
+	MRGraph beta_graph = {0};
 	build_refined_graph(&beta_graph, beta_edges, alpha_graph.n_par,
 						alpha_graph.n_bra, has_normal, graph->n, filter_empty);
+
+	GrB_Index beta_edge_count = count_edges(&beta_graph);
+	if (beta_edge_count == 0) {
+		GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
+		goto cleanup_beta;
+	}
+
+	GrB_Matrix project_reach = NULL;
+	GrB_Matrix *project_edges = NULL;
+	MRGraph project_graph = {0};
+
+	if (grammar_type == PROJECT || grammar_type == ALL) {
+		MRGrammar_t project_grammar =
+			dyck_project_grammar(beta_graph.n_par, beta_graph.n_bra, has_normal);
+
+		int64_t beta_terms_count =
+			get_terms_count(beta_graph.n_par, beta_graph.n_bra, graph->normal);
+		project_edges = (GrB_Matrix *)malloc(beta_terms_count * sizeof(GrB_Matrix));
+
+		info = run_cfl_step(&beta_graph, project_grammar, &project_reach,
+							project_edges, msg);
+		grammar_free(&project_grammar);
+		if (info != GrB_SUCCESS) {
+			goto cleanup_project;
+		}
+
+		build_refined_graph(&project_graph, project_edges, beta_graph.n_par,
+							beta_graph.n_bra, has_normal, graph->n, filter_empty);
+	}
 
 	GrB_Index final_edge_count = count_edges(&beta_graph);
 
 	// Check convergence
 	if (final_edge_count == 0 || initial_edge_count == final_edge_count) {
 		// Stability has been achieved
-		info = matrix_intersect(result, alpha_reach, beta_reach, graph->n, msg);
+		info = matrix_intersect3(result, alpha_reach, beta_reach, project_reach,
+								 graph->n);
 	} else {
 		// Recursive refinement
 		info = mutual_refinement_single(&beta_graph, grammar_type, result,
 										filter_empty);
 	}
+
+cleanup_project:
+	GrB_Matrix_free(&project_reach);
+	free((void *)project_edges);
+	free_refined_graph(&project_graph);
 
 cleanup_beta:
 	GrB_Matrix_free(&beta_reach);
@@ -295,6 +370,8 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		MRGraph *comp = &components[c];
 		GrB_Index *vmap = vertex_maps[c];
 
+		// GrB_Info info = GrB_Matrix_clear(*result); // DELETE
+
 		GrB_Matrix comp_result = NULL;
 		info =
 			mutual_refinement_single(comp, grammar_type, &comp_result, filter_empty);
@@ -307,6 +384,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		GrB_Matrix_nvals(&nnz, comp_result);
 
 		if (nnz > 0) {
+			// printf("Component %ld has %ld nonzeros\n", c, nnz);
 			GrB_Index *rows = malloc(nnz * sizeof(GrB_Index));
 			GrB_Index *cols = malloc(nnz * sizeof(GrB_Index));
 			GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result);
@@ -318,6 +396,15 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 			free(rows);
 			free(cols);
+
+			// printf("Component %lu edges: %lu\n", c, nnz);
+
+			// if (nnz == 15) {
+			// print_all_edges(comp);
+			// print_matrix_edges(*result, "Alpha Reachability");
+			// printf("====\n");
+			// }
+			// exit(0);
 		}
 		GrB_Matrix_free(&comp_result);
 	}
