@@ -239,9 +239,9 @@ static void test_edges_between_components_deduplicated(void) {
 	GrB_Matrix cp = make_empty_matrix(4);
 	GrB_Matrix_setElement_BOOL(op, true, 0, 2);
 	GrB_Matrix_setElement_BOOL(op, true, 1, 2);
-	GrB_Matrix_setElement_BOOL(op, true, 0, 3);
+	GrB_Matrix_setElement_BOOL(cp, true, 0, 3);
 
-	// Graph: 0->1, 1->2, 0->3 (open)
+	// Graph: 0->2, 1->2 (open), 0->3 (close)
 	MRGraph graph = make_simple_graph(4, op, cp);
 
 	// under_approx: 0<->1
