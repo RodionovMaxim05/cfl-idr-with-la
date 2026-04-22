@@ -296,10 +296,11 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 		goto cleanup_beta;
 	}
 
+	// Optional: Project phase
+
 	GrB_Matrix project_reach = NULL;
 	GrB_Matrix *project_edges = NULL;
 	MRGraph project_graph = {0};
-
 	if (grammar_type == PROJECT || grammar_type == ALL) {
 		MRGrammar_t project_grammar =
 			dyck_project_grammar(beta_graph.n_par, beta_graph.n_bra, has_normal);
@@ -319,7 +320,49 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 							beta_graph.n_bra, has_normal, graph->n, filter_empty);
 	}
 
-	GrB_Index final_edge_count = count_edges(&beta_graph);
+	// Optional: Exclude phase
+
+	const MRGraph *final_graph = (grammar_type == PROJECT || grammar_type == ALL)
+									 ? &project_graph
+									 : &beta_graph;
+	GrB_Matrix *exclude_edges = NULL;
+	MRGraph exclude_graph = {0};
+	if (grammar_type == EXCLUDE || grammar_type == ALL) {
+		const MRGraph *cur_graph = final_graph;
+
+		for (int64_t ex_bra = 0; ex_bra < cur_graph->n_bra; ex_bra++) {
+			MRGrammar_t exclude_grammar = dyck_alpha_grammar_k_parity_exclude(
+				cur_graph->n_par, cur_graph->n_bra, has_normal,
+				/*k=*/2, ex_bra);
+
+			int64_t cur_terms_count =
+				get_terms_count(cur_graph->n_par, cur_graph->n_bra, graph->normal);
+			exclude_edges =
+				(GrB_Matrix *)malloc(cur_terms_count * sizeof(GrB_Matrix));
+
+			GrB_Matrix cur_reach = NULL;
+
+			info = run_cfl_step(cur_graph, exclude_grammar, &cur_reach,
+								exclude_edges, msg);
+			grammar_free(&exclude_grammar);
+			GrB_Matrix_free(&cur_reach);
+			if (info != GrB_SUCCESS) {
+				goto cleanup_exclude;
+			}
+
+			free_refined_graph(&exclude_graph);
+			build_refined_graph(&exclude_graph, exclude_edges, cur_graph->n_par,
+								cur_graph->n_bra, has_normal, cur_graph->n,
+								filter_empty);
+
+			free((void *)exclude_edges);
+			exclude_edges = NULL;
+			cur_graph = &exclude_graph;
+		}
+		final_graph = cur_graph;
+	}
+
+	GrB_Index final_edge_count = count_edges(final_graph);
 
 	// Check convergence
 	if (final_edge_count == 0 || initial_edge_count == final_edge_count) {
@@ -328,9 +371,13 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 								 graph->n);
 	} else {
 		// Recursive refinement
-		info = mutual_refinement_single(&beta_graph, grammar_type, result,
+		info = mutual_refinement_single(final_graph, grammar_type, result,
 										filter_empty);
 	}
+
+cleanup_exclude:
+	free((void *)exclude_edges);
+	free_refined_graph(&exclude_graph);
 
 cleanup_project:
 	GrB_Matrix_free(&project_reach);
