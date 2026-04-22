@@ -64,43 +64,55 @@ int main(void) {
 	RUN_OVER_APPROX_TEST(figure11, PARITY2, 9, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(figure11, SE, 7, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(figure11, PROJECT, 8, "project_paths.txt");
-	// RUN_OVER_APPROX_TEST(figure11, EXCLUDE, 9, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(figure11, EXCLUDE, 9, "exclude_paths.txt");
 
 	// loozfon
 	RUN_OVER_APPROX_TEST(loozfon, PARITY, 212, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(loozfon, PARITY2, 211, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(loozfon, SE, 93, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(loozfon, PROJECT, 153, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(loozfon, EXCLUDE, 212, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(loozfon, ALL, 93, "all_paths.txt");
 
 	// faketaobao
 	RUN_OVER_APPROX_TEST(faketaobao, PARITY, 151, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(faketaobao, PARITY2, 151, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(faketaobao, SE, 64, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(faketaobao, PROJECT, 59, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(faketaobao, EXCLUDE, 151, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(faketaobao, ALL, 59, "all_paths.txt");
 
 	// jollyserv
 	RUN_OVER_APPROX_TEST(jollyserv, PARITY, 176, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(jollyserv, PARITY2, 175, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(jollyserv, SE, 164, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(jollyserv, PROJECT, 174, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(jollyserv, EXCLUDE, 176, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(jollyserv, ALL, 164, "all_paths.txt");
 
 	// zertsecurity
 	RUN_OVER_APPROX_TEST(zertsecurity, PARITY, 1081, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(zertsecurity, PARITY2, 1045, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(zertsecurity, SE, 883, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(zertsecurity, PROJECT, 1081, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(zertsecurity, EXCLUDE, 1080, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(zertsecurity, ALL, 883, "all_paths.txt");
 
 	// fakebanker
 	RUN_OVER_APPROX_TEST(fakebanker, PARITY, 590, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(fakebanker, PARITY2, 590, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(fakebanker, SE, 279, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(fakebanker, PROJECT, 354, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(fakebanker, EXCLUDE, 590, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(fakebanker, ALL, 272, "all_paths.txt");
 
 	// uranai
 	RUN_OVER_APPROX_TEST(uranai, PARITY, 143, "parity1_paths.txt");
 	RUN_OVER_APPROX_TEST(uranai, PARITY2, 143, "parity2_paths.txt");
 	RUN_OVER_APPROX_TEST(uranai, SE, 143, "se_paths.txt");
 	RUN_OVER_APPROX_TEST(uranai, PROJECT, 143, "project_paths.txt");
+	RUN_OVER_APPROX_TEST(uranai, EXCLUDE, 143, "exclude_paths.txt");
+	RUN_OVER_APPROX_TEST(uranai, ALL, 143, "all_paths.txt");
 
 	LAGraph_Finalize(msg);
 	return 0;
