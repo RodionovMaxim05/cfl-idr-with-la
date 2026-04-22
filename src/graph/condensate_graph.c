@@ -65,7 +65,7 @@ GrB_Info condensate_from_under_approx(const MRGraph *graph, GrB_Matrix under_app
 	GrB_Matrix_free(&P_T);
 
 	build_refined_graph(&out->condensed_graph, condensed_matrices, graph->n_par,
-						graph->n_bra, graph->normal != NULL, graph->n);
+						graph->n_bra, graph->normal != NULL, graph->n, true);
 	out->components = components;
 
 	return GrB_SUCCESS;

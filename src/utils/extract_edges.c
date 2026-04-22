@@ -64,12 +64,12 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 	if (start_i != GrB_INDEX_MAX && start_j != GrB_INDEX_MAX) {
 		// On-demand analysis
 
-		stack_push(&stack, start_i, start_j, NT_S);
+		stack_push(&stack, start_i, start_j, NT_START);
 	} else {
-		// Default: all pairs from paths[NT_S]
+		// Default: all pairs from paths[NT_START]
 
 		GrB_Index nnz = 0;
-		GrB_Matrix_nvals(&nnz, paths[NT_S]);
+		GrB_Matrix_nvals(&nnz, paths[NT_START]);
 		if (nnz == 0) {
 			goto cleanup;
 		}
@@ -81,11 +81,11 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 		LAGraph_Malloc((void **)&cols, nnz, sizeof(GrB_Index), msg);
 		LAGraph_Malloc(&val_void, nnz, sizeof(AllPathsElem), msg);
 
-		GrB_Matrix_extractTuples(rows, cols, val_void, &nnz, paths[NT_S]);
+		GrB_Matrix_extractTuples(rows, cols, val_void, &nnz, paths[NT_START]);
 
 		for (GrB_Index k = 0; k < nnz; k++) {
 			if (rows[k] != cols[k]) {
-				stack_push(&stack, rows[k], cols[k], NT_S);
+				stack_push(&stack, rows[k], cols[k], NT_START);
 			}
 		}
 
