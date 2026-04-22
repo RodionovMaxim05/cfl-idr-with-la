@@ -14,4 +14,5 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result);
 
 GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 						 GrB_Matrix under_approx, // NULL if not
-						 GrB_Matrix *result);
+						 GrB_Matrix *result,
+						 bool filter_empty); // whether to filter out empty paths

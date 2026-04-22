@@ -1,12 +1,15 @@
 #include "mutual_refinement.h"
+
 #include "LAGraph.h"
-#include "approximation.h"
-#include "grammar/grammar_analysis_utils.h"
-#include "utils/extract_edges.h"
-#include "utils/extract_paths.h"
-#include "utils_LAGraph.h"
+#include "LAGraphX.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "approximation.h"
+#include "grammar/grammar_analysis_utils.h"
+#include "graph/split_into_components.h"
+#include "utils/extract_edges.h"
+#include "utils/extract_paths.h"
 
 static GrB_Index count_edges(const MRGraph *graph) {
 	GrB_Index total = 0, nvals = 0;
@@ -37,24 +40,97 @@ static GrB_Info matrix_intersect(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
 
 GrB_Info build_refined_graph(MRGraph *out, GrB_Matrix *result_matrices,
 							 int64_t n_par, int64_t n_bra, bool has_normal,
-							 GrB_Index n) {
+							 GrB_Index n, bool filter_empty) {
 	out->n = n;
-	out->n_par = n_par;
-	out->n_bra = n_bra;
 
-	out->open_par = (GrB_Matrix *)malloc(n_par * sizeof(GrB_Matrix));
-	out->close_par = (GrB_Matrix *)malloc(n_par * sizeof(GrB_Matrix));
-	out->open_bra = (GrB_Matrix *)malloc(n_bra * sizeof(GrB_Matrix));
-	out->close_bra = (GrB_Matrix *)malloc(n_bra * sizeof(GrB_Matrix));
+	int64_t actual_n_par = 0;
+	int64_t actual_n_bra = 0;
 
-	for (int64_t i = 0; i < n_par; i++) {
-		out->open_par[i] = result_matrices[2 * i];
-		out->close_par[i] = result_matrices[2 * i + 1];
+	if (!filter_empty) {
+		// Quick build without filtration
+
+		actual_n_par = n_par;
+		actual_n_bra = n_bra;
+
+		out->open_par =
+			n_par ? (GrB_Matrix *)malloc(n_par * sizeof(GrB_Matrix)) : NULL;
+		out->close_par =
+			n_par ? (GrB_Matrix *)malloc(n_par * sizeof(GrB_Matrix)) : NULL;
+		out->open_bra =
+			n_bra ? (GrB_Matrix *)malloc(n_bra * sizeof(GrB_Matrix)) : NULL;
+		out->close_bra =
+			n_bra ? (GrB_Matrix *)malloc(n_bra * sizeof(GrB_Matrix)) : NULL;
+
+		for (int64_t i = 0; i < n_par; i++) {
+			out->open_par[i] = result_matrices[2 * i];
+			out->close_par[i] = result_matrices[2 * i + 1];
+		}
+
+		int64_t bra_base = 2 * n_par;
+		for (int64_t i = 0; i < n_bra; i++) {
+			out->open_bra[i] = result_matrices[bra_base + 2 * i];
+			out->close_bra[i] = result_matrices[bra_base + 2 * i + 1];
+		}
+	} else {
+		// Build with empty pair filtering
+
+		for (int64_t i = 0; i < n_par; i++) {
+			GrB_Index n_open = 0, n_close = 0;
+			GrB_Matrix_nvals(&n_open, result_matrices[2 * i]);
+			GrB_Matrix_nvals(&n_close, result_matrices[2 * i + 1]);
+			if (n_open > 0 && n_close > 0) {
+				actual_n_par++;
+			}
+		}
+
+		int64_t bra_base = 2 * n_par;
+		for (int64_t i = 0; i < n_bra; i++) {
+			GrB_Index n_open = 0, n_close = 0;
+			GrB_Matrix_nvals(&n_open, result_matrices[bra_base + 2 * i]);
+			GrB_Matrix_nvals(&n_close, result_matrices[bra_base + 2 * i + 1]);
+			if (n_open > 0 && n_close > 0) {
+				actual_n_bra++;
+			}
+		}
+
+		out->open_par = actual_n_par
+							? (GrB_Matrix *)malloc(actual_n_par * sizeof(GrB_Matrix))
+							: NULL;
+		out->close_par =
+			actual_n_par ? (GrB_Matrix *)malloc(actual_n_par * sizeof(GrB_Matrix))
+						 : NULL;
+		out->open_bra = actual_n_bra
+							? (GrB_Matrix *)malloc(actual_n_bra * sizeof(GrB_Matrix))
+							: NULL;
+		out->close_bra =
+			actual_n_bra ? (GrB_Matrix *)malloc(actual_n_bra * sizeof(GrB_Matrix))
+						 : NULL;
+
+		int64_t p_idx = 0, b_idx = 0;
+		for (int64_t i = 0; i < n_par; i++) {
+			GrB_Index n_valid_open = 0, n_valid_close = 0;
+			GrB_Matrix_nvals(&n_valid_open, result_matrices[2 * i]);
+			GrB_Matrix_nvals(&n_valid_close, result_matrices[2 * i + 1]);
+			if (n_valid_open > 0 && n_valid_close > 0) {
+				out->open_par[p_idx] = result_matrices[2 * i];
+				out->close_par[p_idx] = result_matrices[2 * i + 1];
+				p_idx++;
+			}
+		}
+		for (int64_t i = 0; i < n_bra; i++) {
+			GrB_Index n_valid_open = 0, n_valid_close = 0;
+			GrB_Matrix_nvals(&n_valid_open, result_matrices[bra_base + 2 * i]);
+			GrB_Matrix_nvals(&n_valid_close, result_matrices[bra_base + 2 * i + 1]);
+			if (n_valid_open > 0 && n_valid_close > 0) {
+				out->open_bra[b_idx] = result_matrices[bra_base + 2 * i];
+				out->close_bra[b_idx] = result_matrices[bra_base + 2 * i + 1];
+				b_idx++;
+			}
+		}
 	}
-	for (int64_t i = 0; i < n_bra; i++) {
-		out->open_bra[i] = result_matrices[2 * n_par + 2 * i];
-		out->close_bra[i] = result_matrices[2 * n_par + 2 * i + 1];
-	}
+
+	out->n_par = actual_n_par;
+	out->n_bra = actual_n_bra;
 	out->normal = has_normal ? result_matrices[2 * n_par + 2 * n_bra] : NULL;
 
 	return GrB_SUCCESS;
@@ -118,8 +194,8 @@ cleanup:
 	return info;
 }
 
-GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
-						   GrB_Matrix *result) {
+GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_type,
+								  GrB_Matrix *result, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	bool has_normal = (graph->normal != NULL);
@@ -127,7 +203,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 	GrB_Index initial_edge_count = count_edges(graph);
 	if (initial_edge_count == 0) {
 		GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
-		return GrB_SUCCESS;
+		return info;
 	}
 
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
@@ -148,7 +224,13 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 	MRGraph alpha_graph;
 	build_refined_graph(&alpha_graph, alpha_edges, graph->n_par, graph->n_bra,
-						has_normal, graph->n);
+						has_normal, graph->n, filter_empty);
+
+	GrB_Index alpha_edge_count = count_edges(&alpha_graph);
+	if (alpha_edge_count == 0) {
+		GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
+		goto cleanup_alpha;
+	}
 
 	// Beta phase
 
@@ -166,7 +248,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 	MRGraph beta_graph;
 	build_refined_graph(&beta_graph, beta_edges, alpha_graph.n_par,
-						alpha_graph.n_bra, has_normal, graph->n);
+						alpha_graph.n_bra, has_normal, graph->n, filter_empty);
 
 	GrB_Index final_edge_count = count_edges(&beta_graph);
 
@@ -176,7 +258,8 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		info = matrix_intersect(result, alpha_reach, beta_reach, graph->n, msg);
 	} else {
 		// Recursive refinement
-		info = mutual_refinement(&beta_graph, grammar_type, result);
+		info = mutual_refinement_single(&beta_graph, grammar_type, result,
+										filter_empty);
 	}
 
 cleanup_beta:
@@ -189,5 +272,62 @@ cleanup_alpha:
 	free((void *)alpha_edges);
 	free_refined_graph(&alpha_graph);
 
+	return info;
+}
+
+GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
+						   GrB_Matrix *result, bool filter_empty) {
+	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
+
+	GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
+
+	MRGraph *components = NULL;
+	GrB_Index **vertex_maps = NULL;
+	GrB_Index comp_count = 0;
+	info = split_MRGraph_into_components(graph, &components, &vertex_maps,
+										 &comp_count, msg);
+	if (info != GrB_SUCCESS) {
+		return info;
+	}
+
+	for (GrB_Index c = 0; c < comp_count; c++) {
+		MRGraph *comp = &components[c];
+		GrB_Index *vmap = vertex_maps[c];
+
+		GrB_Matrix comp_result = NULL;
+		info =
+			mutual_refinement_single(comp, grammar_type, &comp_result, filter_empty);
+		if (info != GrB_SUCCESS) {
+			GrB_Matrix_free(&comp_result);
+			goto cleanup;
+		}
+
+		GrB_Index nnz = 0;
+		GrB_Matrix_nvals(&nnz, comp_result);
+
+		if (nnz > 0) {
+			GrB_Index *rows = malloc(nnz * sizeof(GrB_Index));
+			GrB_Index *cols = malloc(nnz * sizeof(GrB_Index));
+			GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result);
+
+			for (GrB_Index k = 0; k < nnz; k++) {
+				GrB_Matrix_setElement_BOOL(*result, true, vmap[rows[k]],
+										   vmap[cols[k]]);
+			}
+
+			free(rows);
+			free(cols);
+		}
+		GrB_Matrix_free(&comp_result);
+	}
+
+cleanup:
+	for (GrB_Index c = 0; c < comp_count; c++) {
+		mr_graph_free(&components[c]);
+		free(vertex_maps[c]);
+	}
+	free(components);
+	free((void *)vertex_maps);
 	return info;
 }
