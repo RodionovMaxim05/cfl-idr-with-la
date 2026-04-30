@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphBLAS.h"
+
 #include "mutual_refinement.h"
 
 static inline int64_t get_terms_count(int64_t n_par, int64_t n_bra,

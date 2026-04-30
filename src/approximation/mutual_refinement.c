@@ -1,15 +1,16 @@
 #include "mutual_refinement.h"
 
-#include "LAGraph.h"
-#include "LAGraphX.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "LAGraph.h"
+#include "LAGraphX.h"
 
 #include "approximation.h"
 #include "grammar/grammar.h"
 #include "grammar/grammar_analysis_utils.h"
+#include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
-#include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 #include "utils_LAGraph.h"
 
@@ -32,6 +33,14 @@ static GrB_Index count_edges(const MRGraph *graph) {
 		total += nvals;
 	}
 	return total;
+}
+
+static bool matrix_contains(GrB_Matrix m, TargetPath *target_path) {
+	AllPathsElem val = {0};
+	GrB_Info info =
+		GrB_Matrix_extractElement_UDT(&val, m, target_path->src, target_path->tgt);
+
+	return info == GrB_SUCCESS;
 }
 
 static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
@@ -191,7 +200,8 @@ void free_refined_graph(MRGraph *graph) {
 }
 
 static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
-							 GrB_Matrix *out_reachability, GrB_Matrix *out_edges,
+							 GrB_Matrix *out_reachability, GrB_Matrix **out_edges,
+							 const TargetPath *target_path, bool *target_found,
 							 char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
@@ -208,8 +218,15 @@ static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
 		goto cleanup;
 	}
 
-	info = extractEdgesFromOutputs(paths, adj, grammar, graph->n, GrB_INDEX_MAX,
-								   GrB_INDEX_MAX, out_edges, msg);
+	if (target_path != NULL) {
+		*target_found = matrix_contains(paths[0], target_path);
+		if (!(*target_found)) {
+			goto cleanup;
+		}
+	}
+
+	info = extractEdgesFromOutputs(paths, adj, grammar, graph->n, target_path,
+								   out_edges, msg);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}
@@ -230,12 +247,13 @@ cleanup:
 	return info;
 }
 
-static GrB_Info mutual_refinement_single(const MRGraph *graph,
-										 MRGrammarType grammar_type,
-										 GrB_Matrix *result, bool filter_empty) {
+GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_type,
+								  GrB_Matrix *result, bool filter_empty,
+								  const TargetPath *target_path) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	bool has_normal = (graph->normal != NULL);
+	bool target_found = false;
 
 	GrB_Index initial_edge_count = count_edges(graph);
 	if (initial_edge_count == 0) {
@@ -253,13 +271,20 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 	GrB_Matrix alpha_reach = NULL;
 	GrB_Matrix *alpha_edges = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
 
-	info = run_cfl_step(graph, alpha_grammar, &alpha_reach, alpha_edges, msg);
+	info = run_cfl_step(graph, alpha_grammar, &alpha_reach, alpha_edges, target_path,
+						&target_found, msg);
 	grammar_free(&alpha_grammar);
 	if (info != GrB_SUCCESS) {
 		goto cleanup_alpha;
 	}
 
 	MRGraph alpha_graph = {0};
+
+	if (target_path != NULL && !target_found) {
+		GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
+		goto cleanup_alpha;
+	}
+
 	build_refined_graph(&alpha_graph, alpha_edges, graph->n_par, graph->n_bra,
 						has_normal, graph->n, filter_empty);
 
@@ -280,13 +305,20 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 	GrB_Matrix *beta_edges =
 		(GrB_Matrix *)malloc(alpha_terms_count * sizeof(GrB_Matrix));
 
-	info = run_cfl_step(&alpha_graph, beta_grammar, &beta_reach, beta_edges, msg);
+	info = run_cfl_step(&alpha_graph, beta_grammar, &beta_reach, beta_edges,
+						target_path, &target_found, msg);
 	grammar_free(&beta_grammar);
 	if (info != GrB_SUCCESS) {
 		goto cleanup_beta;
 	}
 
 	MRGraph beta_graph = {0};
+
+	if (target_path != NULL && !target_found) {
+		GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
+		goto cleanup_beta;
+	}
+
 	build_refined_graph(&beta_graph, beta_edges, alpha_graph.n_par,
 						alpha_graph.n_bra, has_normal, graph->n, filter_empty);
 
@@ -310,9 +342,14 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 		project_edges = (GrB_Matrix *)malloc(beta_terms_count * sizeof(GrB_Matrix));
 
 		info = run_cfl_step(&beta_graph, project_grammar, &project_reach,
-							project_edges, msg);
+							project_edges, target_path, &target_found, msg);
 		grammar_free(&project_grammar);
 		if (info != GrB_SUCCESS) {
+			goto cleanup_project;
+		}
+
+		if (target_path != NULL && !target_found) {
+			GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
 			goto cleanup_project;
 		}
 
@@ -343,10 +380,15 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 			GrB_Matrix cur_reach = NULL;
 
 			info = run_cfl_step(cur_graph, exclude_grammar, &cur_reach,
-								exclude_edges, msg);
+								exclude_edges, target_path, &target_found, msg);
 			grammar_free(&exclude_grammar);
 			GrB_Matrix_free(&cur_reach);
 			if (info != GrB_SUCCESS) {
+				goto cleanup_exclude;
+			}
+
+			if (target_path != NULL && !target_found) {
+				GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
 				goto cleanup_exclude;
 			}
 
@@ -367,12 +409,19 @@ static GrB_Info mutual_refinement_single(const MRGraph *graph,
 	// Check convergence
 	if (final_edge_count == 0 || initial_edge_count == final_edge_count) {
 		// Stability has been achieved
+
+		if (target_path != NULL) {
+			*result = alpha_reach;
+			alpha_reach = NULL;
+			goto cleanup_exclude;
+		}
+
 		info = matrix_intersect3(result, alpha_reach, beta_reach, project_reach,
 								 graph->n);
 	} else {
 		// Recursive refinement
 		info = mutual_refinement_single(final_graph, grammar_type, result,
-										filter_empty);
+										filter_empty, target_path);
 	}
 
 cleanup_exclude:
@@ -398,7 +447,8 @@ cleanup_alpha:
 }
 
 GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
-						   GrB_Matrix *result, bool filter_empty) {
+						   GrB_Matrix *result, bool filter_empty,
+						   const TargetPath *target_path) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
@@ -418,8 +468,49 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 		GrB_Index *vmap = vertex_maps[c];
 
 		GrB_Matrix comp_result = NULL;
-		info =
-			mutual_refinement_single(comp, grammar_type, &comp_result, filter_empty);
+
+		if (target_path != NULL) {
+			GrB_Index local_src = GrB_INVALID_VALUE;
+			GrB_Index local_tgt = GrB_INVALID_VALUE;
+			for (GrB_Index i = 0; i < comp->n; i++) {
+				if (vmap[i] == target_path->src)
+					local_src = i;
+				if (vmap[i] == target_path->tgt)
+					local_tgt = i;
+			}
+			if (local_src == GrB_INVALID_VALUE || local_tgt == GrB_INVALID_VALUE) {
+				continue;
+			}
+
+			GrB_Matrix single_path = NULL;
+			GrB_Matrix_new(&single_path, GrB_BOOL, comp->n, comp->n);
+			GrB_Matrix_setElement_BOOL(single_path, true, local_src, local_tgt);
+
+			MRGraph reduced_comp = {0};
+			bool reduced_owned = false;
+			if (!is_all_pairs(single_path, comp->n)) {
+				info = remove_not_path(comp, single_path, &reduced_comp, msg);
+				if (info != GrB_SUCCESS) {
+					goto cleanup;
+				}
+				reduced_owned = true;
+			} else {
+				reduced_comp = *comp;
+			}
+			GrB_Matrix_free(&single_path);
+
+			TargetPath local_target = {.src = local_src, .tgt = local_tgt};
+			info =
+				mutual_refinement_single(&reduced_comp, grammar_type, &comp_result,
+										 filter_empty, &local_target);
+			if (reduced_owned) {
+				mr_graph_free(&reduced_comp);
+			}
+		} else {
+			info = mutual_refinement_single(comp, grammar_type, &comp_result,
+											filter_empty, NULL);
+		}
+
 		if (info != GrB_SUCCESS) {
 			GrB_Matrix_free(&comp_result);
 			goto cleanup;

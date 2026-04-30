@@ -1,10 +1,11 @@
 #include "remove_not_path.h"
 
-#include "LAGraph.h"
-#include "LAGraphX.h"
-#include <GraphBLAS.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "GraphBLAS.h"
+#include "LAGraph.h"
+#include "LAGraphX.h"
 
 #define OK(f)                                                                       \
 	do {                                                                            \
@@ -186,6 +187,12 @@ void scc_result_free(SccResult *r) {
 	GrB_Matrix_free(&r->scc_reach);
 	free(r->scc_ids);
 	memset(r, 0, sizeof(*r));
+}
+
+bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n) {
+	GrB_Index nnz_approx = 0;
+	GrB_Matrix_nvals(&nnz_approx, over_approx);
+	return nnz_approx >= (n * n);
 }
 
 GrB_Info remove_not_path(const MRGraph *graph, GrB_Matrix over_approx, MRGraph *out,
