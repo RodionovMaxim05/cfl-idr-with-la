@@ -9,7 +9,7 @@
 #include "graph/split_into_components.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
-#include "utils_LAGraph.h"
+#include "utils/utils_LAGraph.h"
 
 GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);

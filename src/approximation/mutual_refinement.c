@@ -12,7 +12,7 @@
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "utils/extract_paths.h"
-#include "utils_LAGraph.h"
+#include "utils/utils_LAGraph.h"
 
 static GrB_Index count_edges(const MRGraph *graph) {
 	GrB_Index total = 0, nvals = 0;
