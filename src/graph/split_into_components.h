@@ -1,6 +1,7 @@
 #pragma once
 
-#include "GraphBLAS.h"
+#include <GraphBLAS.h>
+
 #include "approximation/mr_graph.h"
 
 GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,

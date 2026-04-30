@@ -1,10 +1,9 @@
 #include "mutual_refinement.h"
 
+#include <LAGraph.h>
+#include <LAGraphX.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "LAGraph.h"
-#include "LAGraphX.h"
 
 #include "approximation.h"
 #include "grammar/grammar.h"

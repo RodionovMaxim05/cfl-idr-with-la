@@ -1,6 +1,6 @@
 #include "extract_paths.h"
 
-#include "LAGraphX.h"
+#include <LAGraphX.h>
 
 void extractNonTrivialPaths(GrB_Matrix paths, const MRGraph *graph,
 							GrB_Matrix *result) {

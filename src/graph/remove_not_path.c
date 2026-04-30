@@ -1,11 +1,9 @@
 #include "remove_not_path.h"
 
+#include <LAGraph.h>
+#include <LAGraphX.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "GraphBLAS.h"
-#include "LAGraph.h"
-#include "LAGraphX.h"
 
 #define OK(f)                                                                       \
 	do {                                                                            \

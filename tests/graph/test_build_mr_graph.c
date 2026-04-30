@@ -1,11 +1,12 @@
-#include "LAGraph.h"
-#include "graph/convert_graph.h"
-#include "symbol_list.h"
-#include "terminal/terminal_format.h"
+#include <LAGraph.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "graph/convert_graph.h"
+#include "symbol_list.h"
+#include "terminal/terminal_format.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 

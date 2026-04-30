@@ -1,6 +1,8 @@
 #include "condensate_graph.h"
-#include "LAGraph.h"
-#include "LAGraphX.h"
+
+#include <LAGraph.h>
+#include <LAGraphX.h>
+
 #include "approximation/approximation.h"
 #include "approximation/mutual_refinement.h"
 
