@@ -11,6 +11,7 @@ static char msg[LAGRAPH_MSG_LEN];
 		snprintf(g_path, 1024, "%s/" #folder "/graph.g", TEST_DATA_DIR);            \
 		snprintf(e_path, 1024, "%s/" #folder "/" expected_file, TEST_DATA_DIR);     \
 		printf("Running test: " #grammar_enum " on " #folder "...\n");              \
+		fflush(stdout);                                                             \
 		run_test_logic(g_path, grammar_enum, expected_count, e_path);               \
 	} while (0)
 

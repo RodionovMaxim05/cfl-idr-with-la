@@ -5,11 +5,13 @@
 
 static char msg[LAGRAPH_MSG_LEN];
 
-#define RUN_UNDER_APPROX_TEST(fig_name, ext_expected)                               \
+#define RUN_UNDER_APPROX_TEST(folder, ext_expected)                                 \
 	do {                                                                            \
 		char g[1024], e[1024];                                                      \
-		snprintf(g, 1024, "%s/" #fig_name "/graph.g", TEST_DATA_DIR);               \
-		snprintf(e, 1024, "%s/" #fig_name "/" ext_expected, TEST_DATA_DIR);         \
+		snprintf(g, 1024, "%s/" #folder "/graph.g", TEST_DATA_DIR);                 \
+		snprintf(e, 1024, "%s/" #folder "/" ext_expected, TEST_DATA_DIR);           \
+		printf("Running test: under approx on " #folder "...\n");                   \
+		fflush(stdout);                                                             \
 		run_test_logic(g, e);                                                       \
 	} while (0)
 
