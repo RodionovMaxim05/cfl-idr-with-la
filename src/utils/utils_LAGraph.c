@@ -1,4 +1,5 @@
 #include "utils_LAGraph.h"
+
 #include "LAGraphX.h"
 
 // Cleaning of internal elements before free matrix

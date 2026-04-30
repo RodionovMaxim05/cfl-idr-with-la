@@ -9,7 +9,7 @@
 #include "mutual_refinement.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
-#include "utils_LAGraph.h"
+#include "utils/utils_LAGraph.h"
 
 static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
 									  GrB_Matrix under_approx, GrB_Index n,
@@ -17,7 +17,7 @@ static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
 	GrB_Info info;
 	GrB_Matrix_new(unknown, GrB_BOOL, n, n);
 
-	return GrB_Matrix_assign(unknown, under_approx, NULL, over_approx, GrB_ALL, n,
+	return GrB_Matrix_assign(*unknown, under_approx, NULL, over_approx, GrB_ALL, n,
 							 GrB_ALL, n, GrB_DESC_RSC);
 }
 

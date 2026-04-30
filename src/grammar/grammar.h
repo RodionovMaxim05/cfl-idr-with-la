@@ -8,15 +8,14 @@
 #define NT_START 0
 
 typedef enum {
+	UNKNOWN = -1,
 	DEFAULT,
 	PARITY,
 	PARITY2,
 	SE,
 	PROJECT,
 	EXCLUDE,
-	ALL,
-	PARITYD,
-	ON_DEMAND
+	ALL
 } MRGrammarType;
 
 typedef struct {
