@@ -54,8 +54,5 @@ dkms.conf
 .vscode/
 .venv/
 __pycache__
-build
-pics/
-images/*_cat.bmp
-images/*_monkey.bmp
-output_queue_mode/
+build/
+output/

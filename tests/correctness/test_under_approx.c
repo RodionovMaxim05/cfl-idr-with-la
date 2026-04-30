@@ -1,7 +1,7 @@
 #include "utils.h"
 
 #include "approximation/approximation.h"
-#include "parse_utils.h"
+#include "graph/parse_utils.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 
