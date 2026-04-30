@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GraphBLAS.h"
+#include <GraphBLAS.h>
 
 #include "mutual_refinement.h"
 

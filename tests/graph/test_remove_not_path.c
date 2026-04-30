@@ -1,12 +1,11 @@
-#include "LAGraph.h"
-#include "LAGraphX.h"
-
-#include "graph/remove_not_path.h"
-
+#include <LAGraph.h>
+#include <LAGraphX.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "graph/remove_not_path.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 

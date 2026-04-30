@@ -1,7 +1,7 @@
 #include "approximation.h"
 
-#include "LAGraph.h"
-#include "LAGraphX.h"
+#include <LAGraph.h>
+#include <LAGraphX.h>
 
 #include "grammar/grammar.h"
 #include "graph/condensate_graph.h"

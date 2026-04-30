@@ -1,6 +1,6 @@
 #include "split_into_components.h"
 
-#include "LAGraph.h"
+#include <LAGraph.h>
 
 GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
 	GrB_Matrix A = NULL;

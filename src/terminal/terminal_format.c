@@ -1,4 +1,5 @@
 #include "terminal_format.h"
+
 #include <stdio.h>
 #include <string.h>
 

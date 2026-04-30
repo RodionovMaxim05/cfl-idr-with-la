@@ -1,10 +1,11 @@
 
-#include "LAGraph.h"
-#include "graph/condensate_graph.h"
+#include <LAGraph.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "graph/condensate_graph.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 

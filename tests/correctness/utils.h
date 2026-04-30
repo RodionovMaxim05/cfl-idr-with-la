@@ -1,4 +1,4 @@
-#include "LAGraph.h"
+#include <LAGraph.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>

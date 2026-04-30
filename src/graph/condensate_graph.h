@@ -1,6 +1,7 @@
 #pragma once
 
-#include "GraphBLAS.h"
+#include <GraphBLAS.h>
+
 #include "approximation/mr_graph.h"
 
 typedef struct {

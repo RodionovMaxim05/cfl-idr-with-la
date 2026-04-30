@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GraphBLAS.h"
+#include <GraphBLAS.h>
 
 #include "grammar/grammar.h"
 #include "mr_graph.h"

@@ -1,9 +1,8 @@
 #pragma once
 
+#include <GraphBLAS.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "GraphBLAS.h"
 
 #include "grammar/grammar.h"
 #include "mr_graph.h"

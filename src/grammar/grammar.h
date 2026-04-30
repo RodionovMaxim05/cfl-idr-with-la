@@ -1,8 +1,8 @@
 #pragma once
 
-#include "GraphBLAS.h"
-#include "LAGraph.h"
-#include "LAGraphX.h"
+#include <GraphBLAS.h>
+#include <LAGraph.h>
+#include <LAGraphX.h>
 #include <stdbool.h>
 
 #define NT_START 0
