@@ -1,8 +1,8 @@
 #include "parse_utils.h"
 
+#include "convert_graph.h"
 #include "parser.h"
 #include "symbol_list.h"
-#include "terminal/convert_graph.h"
 
 GrB_Info parse_graph(const char *filename, MRGraph *out) {
 	FILE *graph_file = fopen(filename, "r");
@@ -16,13 +16,13 @@ GrB_Info parse_graph(const char *filename, MRGraph *out) {
 	Graph graph = process_graph(graph_file, &symbol_list);
 	fclose(graph_file);
 
-	GrB_Matrix *matrices = get_grb_matrices_from_graph(graph, &symbol_list);
+	GraphMatrices gm = get_grb_matrices_from_graph(graph, &symbol_list);
 	free(graph.edges);
 
-	GrB_Info info = build_mr_graph(matrices, &symbol_list, graph.node_count,
+	GrB_Info info = build_mr_graph(&gm, &symbol_list, graph.node_count,
 								   &DefaultTerminalFormat, out);
 
-	free((void *)matrices);
+	free(gm.matrix_symbols);
 	symbol_list_free(&symbol_list);
 
 	return info;

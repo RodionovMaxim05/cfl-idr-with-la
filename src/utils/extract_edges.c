@@ -118,7 +118,8 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 
 		// Iterate over intermediate vertices
 		for (GrB_Index k = 0; k < elem.n; k++) {
-			GrB_Index m = elem.middle[k];
+			GrB_Index m =
+				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[k];
 
 			if (m == GrB_INDEX_MAX) {
 				// Add single-edge or empty paths

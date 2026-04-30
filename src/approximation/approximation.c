@@ -9,7 +9,6 @@
 #include "graph/split_into_components.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
-#include "utils/utils_LAGraph.h"
 
 GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
@@ -58,9 +57,9 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 		LAGraph_Calloc((void **)&paths, grammar.nonterms_count, sizeof(GrB_Matrix),
 					   msg);
 
-		info = LAGraph_CFL_AllPaths(paths, adj_matrices, &all_paths_t,
+		info = LAGraph_CFL_AllPaths(paths, &all_paths_t, adj_matrices,
 									grammar.terms_count, grammar.nonterms_count,
-									grammar.rules, grammar.rules_count, msg);
+									grammar.rules, grammar.rules_count, msg, 0);
 		if (info != GrB_SUCCESS) {
 			goto cleanup_comp;
 		}
@@ -89,12 +88,8 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 		GrB_Matrix_free(&comp_result);
 
 	cleanup_comp:
-		for (int64_t a = 0; a < grammar.nonterms_count; a++) {
-			if (paths[a] != NULL) {
-				free_AllPaths_matrix(&paths[a]);
-			}
-		}
-		LAGraph_Free((void **)&paths, msg);
+		LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count,
+										  &all_paths_t);
 		GrB_free(&all_paths_t);
 		grammar_free(&grammar);
 		free((void *)adj_matrices);

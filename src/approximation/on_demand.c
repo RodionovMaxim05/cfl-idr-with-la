@@ -9,7 +9,6 @@
 #include "mutual_refinement.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
-#include "utils/utils_LAGraph.h"
 
 static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
 									  GrB_Matrix under_approx, GrB_Index n,

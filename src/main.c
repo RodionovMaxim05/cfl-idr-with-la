@@ -3,7 +3,6 @@
 #include "graph/parse_utils.h"
 #include "io/cli.h"
 #include "io/output.h"
-#include "utils/utils_LAGraph.h"
 
 int main(int argc, char *argv[]) {
 	char msg[LAGRAPH_MSG_LEN];
@@ -17,14 +16,14 @@ int main(int argc, char *argv[]) {
 	char output_file[512];
 	resolve_output_path(&args, output_file, sizeof(output_file));
 
-	setup(msg);
+	LAGraph_Init(msg);
 
 	MRGraph refined_graph = {0};
 	GrB_Info info = parse_graph(args.graph_file_path, &refined_graph);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error: Failed to parse graph '%s': %d\n",
 				args.graph_file_path, info);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
 
@@ -34,7 +33,7 @@ int main(int argc, char *argv[]) {
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error in under-approximation: %d\n", info);
 		mr_graph_free(&refined_graph);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
 	GrB_Matrix_wait(under_result, GrB_MATERIALIZE);
@@ -50,7 +49,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Error in over-approximation: %d\n", info);
 		GrB_Matrix_free(&under_result);
 		mr_graph_free(&refined_graph);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
 	GrB_Matrix_wait(over_result, GrB_MATERIALIZE);
@@ -65,7 +64,7 @@ int main(int argc, char *argv[]) {
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
 		mr_graph_free(&refined_graph);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
 
@@ -81,7 +80,7 @@ int main(int argc, char *argv[]) {
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
 		mr_graph_free(&refined_graph);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		printf("Analysis completed. Results written to %s\n", output_file);
 		return EXIT_SUCCESS;
 	}
@@ -96,7 +95,7 @@ int main(int argc, char *argv[]) {
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
 		mr_graph_free(&refined_graph);
-		teardown(msg);
+		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
 	GrB_Matrix_wait(on_demand_result, GrB_MATERIALIZE);
@@ -115,7 +114,7 @@ int main(int argc, char *argv[]) {
 	GrB_Matrix_free(&over_result);
 	GrB_Matrix_free(&on_demand_result);
 	mr_graph_free(&refined_graph);
-	teardown(msg);
+	LAGraph_Finalize(msg);
 
 	printf("On-demand refinement completed. Results written to %s\n", output_file);
 	return EXIT_SUCCESS;

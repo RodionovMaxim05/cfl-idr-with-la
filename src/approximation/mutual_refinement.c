@@ -12,7 +12,6 @@
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "utils/extract_paths.h"
-#include "utils/utils_LAGraph.h"
 
 static GrB_Index count_edges(const MRGraph *graph) {
 	GrB_Index total = 0, nvals = 0;
@@ -200,7 +199,7 @@ void free_refined_graph(MRGraph *graph) {
 }
 
 static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
-							 GrB_Matrix *out_reachability, GrB_Matrix **out_edges,
+							 GrB_Matrix *out_reachability, GrB_Matrix *out_edges,
 							 const TargetPath *target_path, bool *target_found,
 							 char *msg) {
 	GrB_Info info = GrB_SUCCESS;
@@ -211,9 +210,9 @@ static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
 	GrB_Matrix *paths = NULL;
 	LAGraph_Calloc((void **)&paths, grammar.nonterms_count, sizeof(GrB_Matrix), msg);
 
-	info = LAGraph_CFL_AllPaths(paths, adj, &all_paths_t, grammar.terms_count,
+	info = LAGraph_CFL_AllPaths(paths, &all_paths_t, adj, grammar.terms_count,
 								grammar.nonterms_count, grammar.rules,
-								grammar.rules_count, msg);
+								grammar.rules_count, msg, 0);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}
@@ -235,12 +234,7 @@ static GrB_Info run_cfl_step(const MRGraph *graph, MRGrammar_t grammar,
 	extractNonTrivialPaths(paths[0], graph, out_reachability);
 
 cleanup:
-	for (int64_t a = 0; a < grammar.nonterms_count; a++) {
-		if (paths[a] != NULL) {
-			free_AllPaths_matrix(&paths[a]);
-		}
-	}
-	LAGraph_Free((void **)&paths, msg);
+	LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count, &all_paths_t);
 	GrB_free(&all_paths_t);
 	free((void *)adj);
 
