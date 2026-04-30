@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GraphBLAS.h"
+
 #include "approximation/mr_graph.h"
 
 typedef struct {
@@ -12,6 +13,8 @@ typedef struct {
 GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg);
 
 void scc_result_free(SccResult *r);
+
+bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n);
 
 GrB_Info remove_not_path(const MRGraph *graph, GrB_Matrix over_approx, MRGraph *out,
 						 char *msg);

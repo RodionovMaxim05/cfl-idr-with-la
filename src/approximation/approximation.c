@@ -1,8 +1,11 @@
 #include "approximation.h"
+
 #include "LAGraph.h"
 #include "LAGraphX.h"
+
 #include "grammar/grammar.h"
 #include "graph/condensate_graph.h"
+#include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
@@ -59,7 +62,6 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 									grammar.terms_count, grammar.nonterms_count,
 									grammar.rules, grammar.rules_count, msg);
 		if (info != GrB_SUCCESS) {
-			printf("%s\n", msg);
 			goto cleanup_comp;
 		}
 
@@ -116,7 +118,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 	char msg[LAGRAPH_MSG_LEN];
 
 	if (under_approx == NULL) {
-		return mutual_refinement(graph, grammar_type, result, filter_empty);
+		return mutual_refinement(graph, grammar_type, result, filter_empty, NULL);
 	}
 
 	CondensationResult cr = {0};
@@ -129,7 +131,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 
 	GrB_Matrix mr_result = NULL;
 	info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-							 filter_empty);
+							 filter_empty, NULL);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}

@@ -1,5 +1,5 @@
 #include "extract_edges.h"
-#include "grammar/grammar.h"
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,9 +41,9 @@ static StackElem stack_pop(Stack *s) { return s->elems[--s->top]; }
 static bool stack_empty(Stack *s) { return s->top == 0; }
 
 GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
-								 MRGrammar_t grammar, GrB_Index n, GrB_Index start_i,
-								 GrB_Index start_j, GrB_Matrix *result_matrices,
-								 char *msg) {
+								 MRGrammar_t grammar, GrB_Index n,
+								 TargetPath *target_path,
+								 GrB_Matrix *result_matrices, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
 	// Initialize result_matrices
@@ -61,10 +61,10 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 	Stack stack = stack_new();
 
 	// Stack initialization
-	if (start_i != GrB_INDEX_MAX && start_j != GrB_INDEX_MAX) {
+	if (target_path != NULL) {
 		// On-demand analysis
 
-		stack_push(&stack, start_i, start_j, NT_START);
+		stack_push(&stack, target_path->src, target_path->tgt, NT_START);
 	} else {
 		// Default: all pairs from paths[NT_START]
 
