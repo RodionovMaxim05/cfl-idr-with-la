@@ -1,8 +1,26 @@
 #include "split_into_components.h"
 
 #include <LAGraph.h>
+#include <stdlib.h>
 
-GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
+typedef struct {
+	GrB_Index comp_id;
+	GrB_Index original_idx;
+} VertexComp;
+
+static int compare_indices(const void *a, const void *b) {
+	GrB_Index i1 = *(const GrB_Index *)a;
+	GrB_Index i2 = *(const GrB_Index *)b;
+	return (i1 > i2) - (i1 < i2);
+}
+
+static int compare_vertex_comp(const void *a, const void *b) {
+	GrB_Index comp1 = ((VertexComp *)a)->comp_id;
+	GrB_Index comp2 = ((VertexComp *)b)->comp_id;
+	return (comp1 > comp2) - (comp1 < comp2);
+}
+
+static GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
 	GrB_Matrix A = NULL;
 	GrB_Matrix_new(&A, GrB_BOOL, graph->n, graph->n);
 
@@ -24,8 +42,9 @@ GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
 	return GrB_SUCCESS;
 }
 
-GrB_Info extract_component_MRgraph(MRGraph *graph, GrB_Index *verts,
-								   GrB_Index verts_count, MRGraph *out, char *msg) {
+static GrB_Info extract_component_MRgraph(MRGraph *graph, GrB_Index *verts,
+										  GrB_Index verts_count, MRGraph *out,
+										  char *msg) {
 	out->n = verts_count;
 	out->n_par = 0;
 	out->n_bra = 0;
@@ -113,40 +132,37 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 	GrB_Matrix A = NULL;
 	MRGraph_to_adjacency(graph, &A);
 
-	GrB_Matrix A_T = NULL, A_sym = NULL;
+	GrB_Matrix A_T = NULL;
 	GrB_Matrix_new(&A_T, GrB_BOOL, n, n);
-	GrB_Matrix_new(&A_sym, GrB_BOOL, n, n);
-	GrB_transpose(A_T, NULL, NULL, A, NULL);
-	GrB_eWiseAdd(A_sym, NULL, NULL, GrB_LOR, A, A_T, NULL);
-	GrB_Matrix_free(&A);
+	GrB_transpose(A_T, NULL, GrB_LOR, A, NULL);
+	GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, A_T, NULL);
 	GrB_Matrix_free(&A_T);
 
 	LAGraph_Graph G = NULL;
-	LAGraph_New(&G, &A_sym, LAGraph_ADJACENCY_UNDIRECTED, msg);
-	LAGraph_Cached_AT(G, msg);
-
+	LAGraph_New(&G, &A, LAGraph_ADJACENCY_UNDIRECTED, msg);
 	GrB_Vector component = NULL;
 	LAGr_ConnectedComponents(&component, G, msg);
 	LAGraph_Delete(&G, msg);
 
 	GrB_Index *comp_ids = malloc(n * sizeof(GrB_Index));
-	for (GrB_Index i = 0; i < n; i++) {
-		GrB_Vector_extractElement_UINT64(&comp_ids[i], component, i);
-	}
+	GrB_Index actual_n = n;
+	GrB_Vector_extractTuples_UINT64(NULL, comp_ids, &actual_n, component);
 	GrB_Vector_free(&component);
 
-	GrB_Index *unique_ids = malloc(n * sizeof(GrB_Index));
-	GrB_Index unique_count = 0;
+	VertexComp *v_list = malloc(n * sizeof(VertexComp));
 	for (GrB_Index i = 0; i < n; i++) {
-		bool found = false;
-		for (GrB_Index u = 0; u < unique_count; u++) {
-			if (unique_ids[u] == comp_ids[i]) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			unique_ids[unique_count++] = comp_ids[i];
+		v_list[i].comp_id = comp_ids[i];
+		v_list[i].original_idx = i;
+	}
+	qsort(v_list, n, sizeof(VertexComp), compare_vertex_comp);
+
+	GrB_Index unique_count = 0;
+	if (n > 0) {
+		unique_count = 1;
+	}
+	for (GrB_Index i = 1; i < n; i++) {
+		if (v_list[i].comp_id != v_list[i - 1].comp_id) {
+			unique_count++;
 		}
 	}
 
@@ -155,27 +171,27 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 		(GrB_Index **)malloc(unique_count * sizeof(GrB_Index *));
 	GrB_Index valid_count = 0;
 
+	GrB_Index start = 0;
 	for (GrB_Index c = 0; c < unique_count; c++) {
-		GrB_Index comp_id = unique_ids[c];
+		GrB_Index end = start;
+		while (end < n && v_list[end].comp_id == v_list[start].comp_id) {
+			end++;
+		}
 
-		GrB_Index *verts = malloc(n * sizeof(GrB_Index));
-		GrB_Index verts_count = 0;
-		for (GrB_Index i = 0; i < n; i++) {
-			if (comp_ids[i] == comp_id) {
-				verts[verts_count++] = i;
+		GrB_Index count = end - start;
+		// Ignore isolated vertices
+		if (count > 1) {
+			GrB_Index *verts = malloc(count * sizeof(GrB_Index));
+			for (GrB_Index k = 0; k < count; k++) {
+				verts[k] = v_list[start + k].original_idx;
 			}
-		}
 
-		// Remove isolated vertices
-		if (verts_count <= 1) {
-			free(verts);
-			continue;
+			extract_component_MRgraph(graph, verts, count, &components[valid_count],
+									  msg);
+			vertex_maps[valid_count] = verts;
+			valid_count++;
 		}
-
-		extract_component_MRgraph(graph, verts, verts_count,
-								  &components[valid_count], msg);
-		vertex_maps[valid_count] = verts;
-		valid_count++;
+		start = end;
 	}
 
 	if (valid_count == 0) {
@@ -184,7 +200,6 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 		*out_components = NULL;
 		*out_vertex_maps = NULL;
 		*out_count = 0;
-
 		goto cleanup;
 	}
 
@@ -209,7 +224,7 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 
 cleanup:
 	free(comp_ids);
-	free(unique_ids);
+	free(v_list);
 
 	return GrB_SUCCESS;
 }
