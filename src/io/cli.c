@@ -98,8 +98,10 @@ int parse_args(int argc, char *argv[], Args *out) {
 	int on_demand = 0;
 	int parity_d = 0;
 	if (strcmp(grammar_str, "parityD") == 0) {
+		grammar_str = "parity";
 		parity_d = 1;
 	} else if (strcmp(grammar_str, "on-demand") == 0) {
+		grammar_str = "all";
 		on_demand = 1;
 	}
 
