@@ -46,8 +46,6 @@ cleanup:
 
 GrB_Info compute_sccs(const MRGraph *graph, GrB_Matrix adj, SccResult *out,
 					  char *msg) {
-	double start_time = get_time_in_seconds();
-
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Vector scc_vec = NULL;
 	GrB_Matrix reach = NULL;
