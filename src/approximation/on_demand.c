@@ -36,126 +36,94 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 	GrB_Matrix unknown_paths = NULL;
 	info = compute_unknown_paths(over_approx, under_approx, n, &unknown_paths, msg);
 
-	GrB_Index unknown_nnz = 0;
-	GrB_Matrix_nvals(&unknown_nnz, unknown_paths);
-
-	GrB_Index *u_rows = NULL, *u_cols = NULL;
-	if (unknown_nnz > 0) {
-		u_rows = malloc(unknown_nnz * sizeof(GrB_Index));
-		u_cols = malloc(unknown_nnz * sizeof(GrB_Index));
-		if (!u_rows || !u_cols) {
-			info = GrB_OUT_OF_MEMORY;
-			goto cleanup_unknown;
-		}
-		GrB_Matrix_extractTuples_BOOL(u_rows, u_cols, NULL, &unknown_nnz,
-									  unknown_paths);
-	}
-
-	bool *is_root = calloc(unknown_nnz, sizeof(bool));
-	GrB_Index *src_root = malloc(unknown_nnz * sizeof(GrB_Index));
-	GrB_Index *tgt_root = malloc(unknown_nnz * sizeof(GrB_Index));
-	if (!is_root || !src_root || !tgt_root) {
+	GrB_Index *comp_map = malloc(n * sizeof(GrB_Index));
+	if (!comp_map) {
 		info = GrB_OUT_OF_MEMORY;
-		goto cleanup_classify;
+		goto cleanup_base;
+	}
+	GrB_Vector_extractTuples_UINT64(NULL, comp_map, &n, cr.components);
+
+	GrB_Index n_scc = cr.condensed_graph.n;
+	GrB_Matrix S = NULL;
+	GrB_Matrix_new(&S, GrB_BOOL, n, n_scc);
+
+	GrB_Index *v_ids = malloc(n * sizeof(GrB_Index));
+	for (GrB_Index i = 0; i < n; i++) {
+		v_ids[i] = i;
 	}
 
-	GrB_Index root_count = 0;
-	GrB_Index derived_count = 0;
-	for (GrB_Index k = 0; k < unknown_nnz; k++) {
-		GrB_Vector_extractElement_UINT64(&src_root[k], cr.components, u_rows[k]);
-		GrB_Vector_extractElement_UINT64(&tgt_root[k], cr.components, u_cols[k]);
+	GrB_Scalar s_true = NULL;
+	GrB_Scalar_new(&s_true, GrB_BOOL);
+	GrB_Scalar_setElement_BOOL(s_true, true);
+	GxB_Matrix_build_Scalar(S, v_ids, comp_map, s_true, n);
+	free(v_ids);
 
-		bool is_root_path = (u_rows[k] == src_root[k] && u_cols[k] == tgt_root[k]);
-		is_root[k] = is_root_path;
-		if (is_root_path) {
-			root_count++;
-		} else {
-			derived_count++;
-		}
-	}
+	// root_candidates = S^T * unknown_paths * S
+	GrB_Matrix root_candidates = NULL;
+	GrB_Matrix tmp_scc = NULL;
+	GrB_Matrix_new(&tmp_scc, GrB_BOOL, n_scc, n);
+	GrB_Matrix_new(&root_candidates, GrB_BOOL, n_scc, n_scc);
+	GrB_mxm(tmp_scc, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, S, unknown_paths,
+			GrB_DESC_T0);
+	GrB_mxm(root_candidates, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, tmp_scc, S,
+			NULL);
+	GrB_Matrix_free(&tmp_scc);
 
-	GrB_Index *ordered = malloc(unknown_nnz * sizeof(GrB_Index));
-	if (!ordered) {
-		info = GrB_OUT_OF_MEMORY;
-		goto cleanup_classify;
-	}
-
-	GrB_Index ri = 0, di = root_count;
-	for (GrB_Index k = 0; k < unknown_nnz; k++) {
-		if (is_root[k]) {
-			ordered[ri++] = k;
-		} else {
-			ordered[di++] = k;
-		}
-	}
-
-	GrB_Matrix confirmed_pairs = NULL;
-	GrB_Matrix_new(&confirmed_pairs, GrB_BOOL, cr.condensed_graph.n,
-				   cr.condensed_graph.n);
-
-	GrB_Matrix res = NULL;
-	GrB_Matrix_dup(&res, under_approx);
+	GrB_Matrix confirmed_roots = NULL;
+	GrB_Matrix_new(&confirmed_roots, GrB_BOOL, n_scc, n_scc);
 
 	MRGraph *components = NULL;
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
-	info = split_MRGraph_into_components(&cr.condensed_graph, &components,
-										 &vertex_maps, &comp_count, msg);
-	if (info != GrB_SUCCESS) {
-		goto cleanup_split;
-	}
+	split_MRGraph_into_components(&cr.condensed_graph, &components, &vertex_maps,
+								  &comp_count, msg);
 
-	for (GrB_Index idx = 0; idx < unknown_nnz; idx++) {
-		GrB_Index k = ordered[idx];
-		GrB_Index sr = src_root[k];
-		GrB_Index tr = tgt_root[k];
+	GrB_Index n_root_pairs = 0;
+	GrB_Matrix_nvals(&n_root_pairs, root_candidates);
 
-		if (!is_root[k]) {
-			// Derived path: inherit decision of its root pair
-			bool confirmed = false;
-			GrB_Info qi =
-				GrB_Matrix_extractElement_BOOL(&confirmed, confirmed_pairs, sr, tr);
-			if (qi == GrB_SUCCESS && confirmed) {
-				GrB_Matrix_setElement_BOOL(res, true, u_rows[k], u_cols[k]);
+	if (n_root_pairs > 0) {
+		GrB_Index *r_rows = malloc(n_root_pairs * sizeof(GrB_Index));
+		GrB_Index *r_cols = malloc(n_root_pairs * sizeof(GrB_Index));
+		GrB_Matrix_extractTuples_BOOL(r_rows, r_cols, NULL, &n_root_pairs,
+									  root_candidates);
+
+		for (GrB_Index i = 0; i < n_root_pairs; i++) {
+			GrB_Index sr = r_rows[i];
+			GrB_Index tr = r_cols[i];
+
+			GrB_Matrix mr_result = NULL;
+			TargetPath target_path = {.src = sr, .tgt = tr};
+
+			info = mutual_refinement_with_components(
+				components, vertex_maps, comp_count, n_scc, grammar_type, &mr_result,
+				filter_empty, &target_path);
+
+			if (info == GrB_SUCCESS && mr_result != NULL) {
+				bool confirmed = false;
+				GrB_Matrix_extractElement_BOOL(&confirmed, mr_result, sr, tr);
+				if (confirmed) {
+					GrB_Matrix_setElement_BOOL(confirmed_roots, true, sr, tr);
+				}
 			}
-			continue;
+			GrB_Matrix_free(&mr_result);
 		}
-
-		// Root path: run mutual refinement on the condensed graph
-		GrB_Matrix mr_result = NULL;
-		TargetPath target_path = {.src = sr, .tgt = tr};
-		info = mutual_refinement_with_components(
-			components, vertex_maps, comp_count, cr.condensed_graph.n, grammar_type,
-			&mr_result, filter_empty, &target_path);
-		if (info != GrB_SUCCESS) {
-			goto cleanup_loop;
-		}
-
-		// Check if the specific (sr, tr) pair was confirmed
-		GrB_Index mr_nnz = 0;
-		GrB_Matrix_nvals(&mr_nnz, mr_result);
-
-		bool pair_found = false;
-		if (mr_nnz > 0) {
-			bool val = false;
-			GrB_Info qi = GrB_Matrix_extractElement_BOOL(&val, mr_result, sr, tr);
-			pair_found = (qi == GrB_SUCCESS && val);
-		}
-
-		if (pair_found) {
-			GrB_Matrix_setElement_BOOL(confirmed_pairs, true, sr, tr);
-			GrB_Matrix_setElement_BOOL(res, true, u_rows[k], u_cols[k]);
-		}
-
-	cleanup_loop:
-		GrB_Matrix_free(&mr_result);
-		if (info != GrB_SUCCESS) {
-			goto cleanup_pairs;
-		}
+		free(r_rows);
+		free(r_cols);
 	}
+
+	// res = under_approx | (S * confirmed_roots * S^T)
+	GrB_Matrix res = NULL;
+	GrB_Matrix_dup(&res, under_approx);
+
+	GrB_Matrix tmp_n = NULL;
+	GrB_Matrix_new(&tmp_n, GrB_BOOL, n, n_scc);
+
+	// tmp_n = S * confirmed_roots
+	GrB_mxm(tmp_n, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, S, confirmed_roots, NULL);
+	// res = res | (tmp_n * S^T)
+	GrB_mxm(res, NULL, GrB_LOR, GrB_LOR_LAND_SEMIRING_BOOL, tmp_n, S, GrB_DESC_T1);
 
 	*result = res;
-	res = NULL;
 
 cleanup_split:
 	for (GrB_Index c = 0; c < comp_count; c++) {
@@ -164,17 +132,13 @@ cleanup_split:
 	}
 	free(components);
 	free((void *)vertex_maps);
-cleanup_pairs:
-	GrB_Matrix_free(&confirmed_pairs);
-	GrB_Matrix_free(&res);
-	free(ordered);
-cleanup_classify:
-	free(is_root);
-	free(src_root);
-	free(tgt_root);
-cleanup_unknown:
-	free(u_rows);
-	free(u_cols);
+	GrB_Matrix_free(&tmp_n);
+	GrB_Matrix_free(&confirmed_roots);
+	GrB_Matrix_free(&root_candidates);
+	GrB_Matrix_free(&S);
+	GrB_Scalar_free(&s_true);
+	free(comp_map);
+cleanup_base:
 	GrB_Matrix_free(&unknown_paths);
 	condensation_result_free(&cr, msg);
 	return info;
@@ -185,7 +149,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 					   bool filter_empty, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
-	// Step 1: Apply "classic" grammar refinement
+	// Step 1: Apply "default" grammar refinement
 
 	MRGraph reduced1 = {0};
 	bool reduced1_owned = false;
@@ -199,9 +163,9 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 		reduced1_owned = true;
 	}
 
-	GrB_Matrix classic_paths = NULL;
+	GrB_Matrix default_paths = NULL;
 	info = refine_mr_with_grammar(&reduced1, under_approx, over_approx, DEFAULT,
-								  &classic_paths, filter_empty, msg);
+								  &default_paths, filter_empty, msg);
 	if (info != GrB_SUCCESS) {
 		if (reduced1_owned) {
 			mr_graph_free(&reduced1);
@@ -213,7 +177,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 		if (reduced1_owned) {
 			mr_graph_free(&reduced1);
 		}
-		*result = classic_paths;
+		*result = default_paths;
 		return GrB_SUCCESS;
 	}
 
@@ -221,10 +185,10 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 
 	MRGraph reduced2 = {0};
 	bool reduced2_owned = true;
-	if (is_all_pairs(classic_paths, graph->n)) {
+	if (is_all_pairs(default_paths, graph->n)) {
 		reduced2 = reduced1;
 	} else {
-		info = remove_not_path(&reduced1, classic_paths, &reduced2, msg);
+		info = remove_not_path(&reduced1, default_paths, &reduced2, msg);
 		if (info != GrB_SUCCESS) {
 			if (reduced1_owned) {
 				mr_graph_free(&reduced1);
@@ -239,12 +203,12 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 	}
 
 	GrB_Matrix final_paths = NULL;
-	info = refine_mr_with_grammar(&reduced2, under_approx, classic_paths, ALL,
+	info = refine_mr_with_grammar(&reduced2, under_approx, default_paths, ALL,
 								  &final_paths, filter_empty, msg);
 	if (reduced2_owned) {
 		mr_graph_free(&reduced2);
 	}
-	GrB_Matrix_free(&classic_paths);
+	GrB_Matrix_free(&default_paths);
 	if (info != GrB_SUCCESS) {
 		return info;
 	}
