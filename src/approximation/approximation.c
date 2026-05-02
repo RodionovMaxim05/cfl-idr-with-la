@@ -113,7 +113,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 	char msg[LAGRAPH_MSG_LEN];
 
 	if (under_approx == NULL) {
-		return mutual_refinement(graph, grammar_type, result, filter_empty, NULL);
+		return mutual_refinement(graph, grammar_type, result, filter_empty);
 	}
 
 	CondensationResult cr = {0};
@@ -126,7 +126,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 
 	GrB_Matrix mr_result = NULL;
 	info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-							 filter_empty, NULL);
+							 filter_empty);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}

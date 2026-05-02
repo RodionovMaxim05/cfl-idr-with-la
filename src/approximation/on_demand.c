@@ -96,6 +96,15 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 	GrB_Matrix res = NULL;
 	GrB_Matrix_dup(&res, under_approx);
 
+	MRGraph *components = NULL;
+	GrB_Index **vertex_maps = NULL;
+	GrB_Index comp_count = 0;
+	info = split_MRGraph_into_components(&cr.condensed_graph, &components,
+										 &vertex_maps, &comp_count, msg);
+	if (info != GrB_SUCCESS) {
+		goto cleanup_split;
+	}
+
 	for (GrB_Index idx = 0; idx < unknown_nnz; idx++) {
 		GrB_Index k = ordered[idx];
 		GrB_Index sr = src_root[k];
@@ -115,8 +124,9 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 		// Root path: run mutual refinement on the condensed graph
 		GrB_Matrix mr_result = NULL;
 		TargetPath target_path = {.src = sr, .tgt = tr};
-		info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-								 filter_empty, &target_path);
+		info = mutual_refinement_with_components(
+			components, vertex_maps, comp_count, cr.condensed_graph.n, grammar_type,
+			&mr_result, filter_empty, &target_path);
 		if (info != GrB_SUCCESS) {
 			goto cleanup_loop;
 		}
@@ -147,6 +157,13 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 	*result = res;
 	res = NULL;
 
+cleanup_split:
+	for (GrB_Index c = 0; c < comp_count; c++) {
+		mr_graph_free(&components[c]);
+		free(vertex_maps[c]);
+	}
+	free(components);
+	free((void *)vertex_maps);
 cleanup_pairs:
 	GrB_Matrix_free(&confirmed_pairs);
 	GrB_Matrix_free(&res);
