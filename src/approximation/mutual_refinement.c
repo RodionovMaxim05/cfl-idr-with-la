@@ -439,22 +439,16 @@ cleanup_alpha:
 	return info;
 }
 
-GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
-						   GrB_Matrix *result, bool filter_empty,
-						   const TargetPath *target_path) {
+GrB_Info mutual_refinement_with_components(MRGraph *components,
+										   GrB_Index **vertex_maps,
+										   GrB_Index comp_count, GrB_Index global_n,
+										   MRGrammarType grammar_type,
+										   GrB_Matrix *result, bool filter_empty,
+										   const TargetPath *target_path) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
-	GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
-
-	MRGraph *components = NULL;
-	GrB_Index **vertex_maps = NULL;
-	GrB_Index comp_count = 0;
-	info = split_MRGraph_into_components(graph, &components, &vertex_maps,
-										 &comp_count, msg);
-	if (info != GrB_SUCCESS) {
-		return info;
-	}
+	GrB_Matrix_new(result, GrB_BOOL, global_n, global_n);
 
 	for (GrB_Index c = 0; c < comp_count; c++) {
 		MRGraph *comp = &components[c];
@@ -466,10 +460,12 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 			GrB_Index local_src = GrB_INVALID_VALUE;
 			GrB_Index local_tgt = GrB_INVALID_VALUE;
 			for (GrB_Index i = 0; i < comp->n; i++) {
-				if (vmap[i] == target_path->src)
+				if (vmap[i] == target_path->src) {
 					local_src = i;
-				if (vmap[i] == target_path->tgt)
+				}
+				if (vmap[i] == target_path->tgt) {
 					local_tgt = i;
+				}
 			}
 			if (local_src == GrB_INVALID_VALUE || local_tgt == GrB_INVALID_VALUE) {
 				continue;
@@ -484,6 +480,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 			if (!is_all_pairs(single_path, comp->n)) {
 				info = remove_not_path(comp, single_path, &reduced_comp, msg);
 				if (info != GrB_SUCCESS) {
+					GrB_Matrix_free(&single_path);
 					goto cleanup;
 				}
 				reduced_owned = true;
@@ -511,7 +508,6 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 		GrB_Index nnz = 0;
 		GrB_Matrix_nvals(&nnz, comp_result);
-
 		if (nnz > 0) {
 			GrB_Index *rows = malloc(nnz * sizeof(GrB_Index));
 			GrB_Index *cols = malloc(nnz * sizeof(GrB_Index));
@@ -521,7 +517,6 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 				GrB_Matrix_setElement_BOOL(*result, true, vmap[rows[k]],
 										   vmap[cols[k]]);
 			}
-
 			free(rows);
 			free(cols);
 		}
@@ -529,6 +524,28 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 	}
 
 cleanup:
+	return info;
+}
+
+GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
+						   GrB_Matrix *result, bool filter_empty) {
+	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
+
+	MRGraph *components = NULL;
+	GrB_Index **vertex_maps = NULL;
+	GrB_Index comp_count = 0;
+
+	info = split_MRGraph_into_components(graph, &components, &vertex_maps,
+										 &comp_count, msg);
+	if (info != GrB_SUCCESS) {
+		return info;
+	}
+
+	info = mutual_refinement_with_components(components, vertex_maps, comp_count,
+											 graph->n, grammar_type, result,
+											 filter_empty, NULL);
+
 	for (GrB_Index c = 0; c < comp_count; c++) {
 		mr_graph_free(&components[c]);
 		free(vertex_maps[c]);

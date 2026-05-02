@@ -116,7 +116,7 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	return idx;
 }
 
-static void free_grammar_index(NontermRules *idx, int32_t nonterms_count) {
+static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	if (!idx) {
 		return;
 	}

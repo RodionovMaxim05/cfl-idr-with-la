@@ -10,7 +10,8 @@ typedef struct {
 	GrB_Matrix scc_reach;
 } SccResult;
 
-GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg);
+GrB_Info compute_sccs(const MRGraph *graph, GrB_Matrix adj, SccResult *out,
+					  char *msg);
 
 void scc_result_free(SccResult *r);
 

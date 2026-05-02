@@ -19,16 +19,17 @@ static GrB_Info build_adjacency(const MRGraph *graph, GrB_Matrix *adj_out) {
 	OK(GrB_Matrix_new(&adj, GrB_BOOL, graph->n, graph->n));
 
 	for (int64_t i = 0; i < graph->n_par; i++) {
-		OK(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->open_par[i], NULL));
-		OK(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->close_par[i],
-						NULL));
+		OK(GrB_assign(adj, NULL, GrB_LOR, graph->open_par[i], GrB_ALL, 0, GrB_ALL, 0,
+					  NULL));
+		OK(GrB_assign(adj, NULL, GrB_LOR, graph->close_par[i], GrB_ALL, 0, GrB_ALL,
+					  0, NULL));
 	}
 
 	for (int64_t i = 0; i < graph->n_bra; i++) {
-		OK(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->open_bra[i], NULL));
-
-		OK(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->close_bra[i],
-						NULL));
+		OK(GrB_assign(adj, NULL, GrB_LOR, graph->open_bra[i], GrB_ALL, 0, GrB_ALL, 0,
+					  NULL));
+		OK(GrB_assign(adj, NULL, GrB_LOR, graph->close_bra[i], GrB_ALL, 0, GrB_ALL,
+					  0, NULL));
 	}
 
 	if (graph->normal != NULL) {
@@ -43,20 +44,18 @@ cleanup:
 	return info;
 }
 
-GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg) {
+GrB_Info compute_sccs(const MRGraph *graph, GrB_Matrix adj, SccResult *out,
+					  char *msg) {
+	double start_time = get_time_in_seconds();
+
 	GrB_Info info = GrB_SUCCESS;
-	GrB_Matrix adj = NULL;
 	GrB_Vector scc_vec = NULL;
 	GrB_Matrix reach = NULL;
 	GrB_Matrix next = NULL;
-
 	GrB_Index *scc_ids = NULL;
-	GrB_Index *rows = NULL, *cols = NULL;
 	GrB_Index *remap = NULL;
 
 	GrB_Index n = graph->n;
-
-	OK(build_adjacency(graph, &adj));
 
 	// LAGraph_scc can't handle n=1
 	if (n == 1) {
@@ -65,7 +64,6 @@ GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg) {
 		out->scc_ids[0] = 0;
 		GrB_Matrix_new(&out->scc_reach, GrB_BOOL, 1, 1);
 		GrB_Matrix_setElement_BOOL(out->scc_reach, true, 0, 0);
-		GrB_Matrix_free(&adj);
 		return GrB_SUCCESS;
 	}
 
@@ -81,11 +79,20 @@ GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg) {
 	OK(GrB_Vector_nvals(&nvals, scc_vec));
 	GrB_Index *raw_inds = malloc(nvals * sizeof(GrB_Index));
 	GrB_Index *raw_vals = malloc(nvals * sizeof(GrB_Index));
+	if (!raw_inds || !raw_vals) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
+
 	OK(GrB_Vector_extractTuples_UINT64(raw_inds, raw_vals, &nvals, scc_vec));
 
 	// Remapping
 
 	remap = malloc(n * sizeof(GrB_Index));
+	if (!remap) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
 	memset(remap, 0xFF, n * sizeof(GrB_Index)); // 0xFF... == (GrB_Index)-1
 
 	GrB_Index n_scc = 0;
@@ -105,35 +112,36 @@ GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg) {
 
 	// Construction of the condensation matrix
 
-	OK(GrB_Matrix_nvals(&nvals, adj));
-	rows = malloc(nvals * sizeof(GrB_Index));
-	cols = malloc(nvals * sizeof(GrB_Index));
-	bool *vals = malloc(nvals * sizeof(bool));
+	GrB_Matrix S = NULL;
+	GrB_Matrix tmp_scc = NULL;
+	OK(GrB_Matrix_new(&S, GrB_BOOL, n, n_scc));
 
-	OK(GrB_Matrix_extractTuples_BOOL(rows, cols, vals, &nvals, adj));
-
-	GrB_Index k_out = 0;
-	for (GrB_Index k = 0; k < nvals; k++) {
-		GrB_Index cu = scc_ids[rows[k]];
-		GrB_Index cv = scc_ids[cols[k]];
-		if (cu != cv) {
-			rows[k_out] = cu;
-			cols[k_out] = cv;
-			vals[k_out] = true;
-			k_out++;
-		}
+	GrB_Index *v_ids = malloc(n * sizeof(GrB_Index));
+	for (GrB_Index i = 0; i < n; i++) {
+		v_ids[i] = i;
 	}
 
+	GrB_Scalar s_true = NULL;
+	OK(GrB_Scalar_new(&s_true, GrB_BOOL));
+	OK(GrB_Scalar_setElement_BOOL(s_true, true));
+
+	OK(GxB_Matrix_build_Scalar(S, v_ids, scc_ids, s_true, n));
+
+	free(v_ids);
+	GrB_Scalar_free(&s_true);
+
+	// reach = S^T * adj * S
+	OK(GrB_Matrix_new(&tmp_scc, GrB_BOOL, n_scc, n));
 	OK(GrB_Matrix_new(&reach, GrB_BOOL, n_scc, n_scc));
-	if (k_out > 0) {
-		OK(GrB_Matrix_build_BOOL(reach, rows, cols, vals, k_out, GrB_LOR));
-	}
-	free(rows);
-	free(cols);
-	free(vals);
-	rows = NULL;
-	cols = NULL;
-	vals = NULL;
+
+	// tmp = S^T * adj
+	OK(GrB_mxm(tmp_scc, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, S, adj,
+			   GrB_DESC_T0));
+	// reach = tmp * S
+	OK(GrB_mxm(reach, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, tmp_scc, S, NULL));
+
+	GrB_Matrix_free(&S);
+	GrB_Matrix_free(&tmp_scc);
 
 	// Transitive closure
 
@@ -167,14 +175,13 @@ GrB_Info compute_sccs(const MRGraph *graph, SccResult *out, char *msg) {
 	reach = NULL;
 
 cleanup:
-	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&reach);
+	GrB_Matrix_free(&S);
+	GrB_Matrix_free(&tmp_scc);
 	GrB_Vector_free(&scc_vec);
 	GrB_Matrix_free(&next);
 	free(scc_ids);
 	free(remap);
-	free(rows);
-	free(cols);
 	return info;
 }
 
@@ -206,8 +213,10 @@ GrB_Info remove_not_path(const MRGraph *graph, GrB_Matrix over_approx, MRGraph *
 
 	GrB_Index n = graph->n;
 
+	OK(build_adjacency(graph, &adj));
+
 	// Calculating SCC
-	OK(compute_sccs(graph, &sr, msg));
+	OK(compute_sccs(graph, adj, &sr, msg));
 	GrB_Index n_scc = sr.n_scc;
 
 	// Build selection matrix S (n × n_scc): S[i][sr.scc_ids[i]] = true
@@ -260,7 +269,6 @@ GrB_Info remove_not_path(const MRGraph *graph, GrB_Matrix over_approx, MRGraph *
 	GrB_Matrix_free(&tmp_n);
 
 	// Final mask: leaving only those edges that are in the original graph
-	OK(build_adjacency(graph, &adj));
 	OK(GrB_Matrix_new(&keep_mask, GrB_BOOL, n, n));
 	OK(GrB_eWiseMult(keep_mask, NULL, NULL, GrB_LAND, adj, M, NULL));
 

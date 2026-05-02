@@ -84,6 +84,15 @@ static GrB_Matrix make_over_approx(GrB_Index n, const GrB_Index *srcs,
 	return m;
 }
 
+static GrB_Matrix build_test_adj(GrB_Index n, GrB_Matrix open_par,
+								 GrB_Matrix close_par) {
+	GrB_Matrix adj;
+	GrB_Matrix_new(&adj, GrB_BOOL, n, n);
+	GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, open_par, NULL);
+	GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, close_par, NULL);
+	return adj;
+}
+
 // =================================================================================
 // Tests for compute_sccs
 // =================================================================================
@@ -92,10 +101,11 @@ static GrB_Matrix make_over_approx(GrB_Index n, const GrB_Index *srcs,
 static void test_computeSccs_single_vertex(void) {
 	GrB_Matrix op = make_empty_matrix(1);
 	GrB_Matrix cp = make_empty_matrix(1);
+	GrB_Matrix adj = build_test_adj(1, op, cp);
 	MRGraph graph = make_simple_graph(1, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, &sr, msg);
+	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 1);
@@ -105,6 +115,7 @@ static void test_computeSccs_single_vertex(void) {
 
 	scc_result_free(&sr);
 	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 }
@@ -113,10 +124,11 @@ static void test_computeSccs_single_vertex(void) {
 static void test_computeSccs_two_disconnected_vertices(void) {
 	GrB_Matrix op = make_empty_matrix(2);
 	GrB_Matrix cp = make_empty_matrix(2);
+	GrB_Matrix adj = build_test_adj(2, op, cp);
 	MRGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, &sr, msg);
+	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 2);
@@ -133,6 +145,7 @@ static void test_computeSccs_two_disconnected_vertices(void) {
 
 	scc_result_free(&sr);
 	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 }
@@ -144,10 +157,11 @@ static void test_computeSccs_directed_cycle_is_one_scc(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1); // A->B
 	GrB_Matrix_setElement_BOOL(op, true, 1, 2); // B->C
 	GrB_Matrix_setElement_BOOL(cp, true, 2, 0); // C->A
+	GrB_Matrix adj = build_test_adj(3, op, cp);
 	MRGraph graph = make_simple_graph(3, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, &sr, msg);
+	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 1);
@@ -159,6 +173,7 @@ static void test_computeSccs_directed_cycle_is_one_scc(void) {
 
 	scc_result_free(&sr);
 	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 }
@@ -170,10 +185,11 @@ static void test_computeSccs_dag_transitive_closure(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1); // A->B
 	GrB_Matrix_setElement_BOOL(op, true, 2, 3); // C->D
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2); // B->C
+	GrB_Matrix adj = build_test_adj(4, op, cp);
 	MRGraph graph = make_simple_graph(4, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, &sr, msg);
+	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 4);
@@ -212,6 +228,7 @@ static void test_computeSccs_dag_transitive_closure(void) {
 
 	scc_result_free(&sr);
 	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 }
@@ -223,10 +240,11 @@ static void test_computeSccs_parallel_edges(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1);
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1);
 	GrB_Matrix_setElement_BOOL(cp, true, 0, 1);
+	GrB_Matrix adj = build_test_adj(2, op, cp);
 	MRGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, &sr, msg);
+	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 2);
@@ -242,6 +260,7 @@ static void test_computeSccs_parallel_edges(void) {
 
 	scc_result_free(&sr);
 	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&adj);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 }
