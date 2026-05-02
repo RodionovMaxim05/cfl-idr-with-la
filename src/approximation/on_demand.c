@@ -6,6 +6,7 @@
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
+#include "mr_cache.h"
 #include "mutual_refinement.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
@@ -27,6 +28,8 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 									   char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
+	MRCache cache = {0};
+	mr_cache_init(&cache);
 	GrB_Index n = graph->n;
 
 	CondensationResult cr = {0};
@@ -88,6 +91,9 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 									  root_candidates);
 
 		for (GrB_Index i = 0; i < n_root_pairs; i++) {
+			if (i % 10 == 0) {
+				mr_cache_free(&cache);
+			}
 			GrB_Index sr = r_rows[i];
 			GrB_Index tr = r_cols[i];
 
@@ -96,7 +102,7 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 
 			info = mutual_refinement_with_components(
 				components, vertex_maps, comp_count, n_scc, grammar_type, &mr_result,
-				filter_empty, &target_path);
+				filter_empty, &target_path, &cache);
 
 			if (info == GrB_SUCCESS && mr_result != NULL) {
 				bool confirmed = false;
@@ -141,6 +147,7 @@ cleanup_split:
 cleanup_base:
 	GrB_Matrix_free(&unknown_paths);
 	condensation_result_free(&cr, msg);
+	mr_cache_free(&cache);
 	return info;
 }
 

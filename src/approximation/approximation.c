@@ -7,6 +7,7 @@
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
+#include "mr_cache.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 
@@ -112,8 +113,11 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
+	MRCache cache = {0};
+	mr_cache_init(&cache);
+
 	if (under_approx == NULL) {
-		return mutual_refinement(graph, grammar_type, result, filter_empty);
+		return mutual_refinement(graph, grammar_type, result, filter_empty, &cache);
 	}
 
 	CondensationResult cr = {0};
@@ -126,7 +130,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 
 	GrB_Matrix mr_result = NULL;
 	info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-							 filter_empty);
+							 filter_empty, &cache);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}
@@ -136,5 +140,6 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 cleanup:
 	GrB_Matrix_free(&mr_result);
 	condensation_result_free(&cr, msg);
+	mr_cache_free(&cache);
 	return info;
 }
