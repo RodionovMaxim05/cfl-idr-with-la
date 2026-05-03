@@ -4,6 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "uthash.h"
+
+typedef struct {
+	GrB_Index i;
+	GrB_Index j;
+	int32_t A;
+} VisitedKey;
+
+typedef struct {
+	VisitedKey key;
+	UT_hash_handle hh;
+} VisitedEntry;
+
 typedef struct {
 	GrB_Index row_idx;
 	GrB_Index col_idx;
@@ -127,10 +140,6 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	free(idx);
 }
 
-#define VISITED_IDX(A, i, j, n) ((size_t)(A) * (n) * (n) + (size_t)(i) * (n) + (j))
-#define VISITED_GET(v, A, i, j, n) ((v)[VISITED_IDX(A, i, j, n)])
-#define VISITED_SET(v, A, i, j, n) ((v)[VISITED_IDX(A, i, j, n)] = 1)
-
 GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 								 MRGrammar_t grammar, GrB_Index n,
 								 TargetPath *target_path,
@@ -148,14 +157,8 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 		return GrB_OUT_OF_MEMORY;
 	}
 
-	// visited - flat array
-	size_t visited_size = (size_t)grammar.nonterms_count * n * n;
-	uint8_t *visited = calloc(visited_size, 1);
-	if (!visited) {
-		free_grammar_index(grammar_idx, grammar.nonterms_count);
-		return GrB_OUT_OF_MEMORY;
-	}
-
+	// visited - hash table
+	VisitedEntry *visited_hash = NULL;
 	Stack stack = stack_new();
 
 	// Stack initialization
@@ -199,10 +202,19 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 		GrB_Index j = cur.col_idx;
 		int32_t A = cur.nonterm;
 
-		if (VISITED_GET(visited, A, i, j, n)) {
+		// Hash table search
+		VisitedKey lk = {.i = i, .j = j, .A = A};
+		VisitedEntry *found;
+		HASH_FIND(hh, visited_hash, &lk, sizeof(VisitedKey), found);
+
+		if (found) {
 			continue;
 		}
-		VISITED_SET(visited, A, i, j, n);
+
+		// Add to the hash table
+		VisitedEntry *new_entry = malloc(sizeof(VisitedEntry));
+		new_entry->key = lk;
+		HASH_ADD(hh, visited_hash, key, sizeof(VisitedKey), new_entry);
 
 		AllPathsElem elem;
 		if (GrB_Matrix_extractElement_UDT(&elem, paths[A], i, j) == GrB_NO_VALUE) {
@@ -248,10 +260,16 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 
 					// Only push if not already visited - avoids stacking the same
 					// pair multiple times
-					if (!VISITED_GET(visited, B, i, mid, n)) {
+					VisitedKey lkB = {i, mid, B};
+					VisitedKey lkC = {mid, j, C};
+					VisitedEntry *fB, *fC;
+					HASH_FIND(hh, visited_hash, &lkB, sizeof(VisitedKey), fB);
+					HASH_FIND(hh, visited_hash, &lkC, sizeof(VisitedKey), fC);
+
+					if (!fB) {
 						stack_push(&stack, i, mid, B);
 					}
-					if (!VISITED_GET(visited, C, mid, j, n)) {
+					if (!fC) {
 						stack_push(&stack, mid, j, C);
 					}
 				}
@@ -260,7 +278,11 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 	}
 
 cleanup:
-	free(visited);
+	VisitedEntry *curr_entry, *tmp_entry;
+	HASH_ITER(hh, visited_hash, curr_entry, tmp_entry) {
+		HASH_DEL(visited_hash, curr_entry);
+		free(curr_entry);
+	}
 	free_grammar_index(grammar_idx, grammar.nonterms_count);
 	stack_free(&stack);
 	return GrB_SUCCESS;
