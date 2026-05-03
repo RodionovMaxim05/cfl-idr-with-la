@@ -1,9 +1,5 @@
 #include "utils.h"
 
-#include "approximation/approximation.h"
-#include "graph/parse_utils.h"
-#include "graph/valueflow_extensions.h"
-
 static char msg[LAGRAPH_MSG_LEN];
 
 #define RUN_UNDER_APPROX_TEST(folder, valueflow, ext_expected)                      \
@@ -19,21 +15,21 @@ static char msg[LAGRAPH_MSG_LEN];
 
 static void run_test_logic(const char *graph_path, bool valueflow,
 						   const char *expected_path) {
-	MRGraph graph = {0};
+	IdrGraph graph = {0};
 	GrB_Info info = parse_graph(graph_path, &graph);
 	assert(info == GrB_SUCCESS);
 
-	MRGraph new_graph = {0};
+	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = remove_valueflow_unreachable(&graph, &new_graph, msg);
+		info = idr_remove_valueflow_unreachable(&graph, &new_graph, msg);
 		assert(info == GrB_SUCCESS);
-		mr_graph_free(&graph);
+		idr_graph_free(&graph);
 	} else {
 		new_graph = graph;
 	}
 
 	GrB_Matrix result = NULL;
-	info = get_under_approx(&new_graph, valueflow, &result);
+	info = idr_get_under_approx(&new_graph, valueflow, &result);
 	assert(info == GrB_SUCCESS);
 
 	Pair *actual = NULL;
@@ -46,7 +42,7 @@ static void run_test_logic(const char *graph_path, bool valueflow,
 	free(actual);
 	free(expected);
 	GrB_Matrix_free(&result);
-	mr_graph_free(&new_graph);
+	idr_graph_free(&new_graph);
 }
 
 int main(void) {

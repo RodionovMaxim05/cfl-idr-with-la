@@ -1,11 +1,10 @@
 #include "valueflow_approx.h"
 
 #include "graph/valueflow_extensions.h"
-#include "mr_graph.h"
 #include "utils/extract_edges.h"
 
 GrB_Info apply_valueflow_under_approx(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
-									  MRGrammar_t grammar, const MRGraph *comp,
+									  MRGrammar_t grammar, const IdrGraph *comp,
 									  GrB_Matrix *comp_result, char *msg) {
 	GrB_Matrix *out_edges =
 		(GrB_Matrix *)malloc(grammar.terms_count * sizeof(GrB_Matrix));
@@ -16,7 +15,7 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *paths, GrB_Matrix *adj_matrice
 	extractEdgesFromOutputs(paths, adj_matrices, grammar, comp->n, NULL, out_edges,
 							msg);
 
-	MRGraph updated_graph = {0};
+	IdrGraph updated_graph = {0};
 	build_refined_graph(&updated_graph, out_edges, comp->n_par, comp->n_bra,
 						comp->normal != NULL, comp->n, false);
 
@@ -33,8 +32,8 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *paths, GrB_Matrix *adj_matrice
 	return GrB_SUCCESS;
 }
 
-GrB_Info apply_valueflow_over_approx(const MRGraph *graph, GrB_Matrix *beta_reach,
-									 MRGraph *filtered_graph, char *msg) {
+GrB_Info apply_valueflow_over_approx(const IdrGraph *graph, GrB_Matrix *beta_reach,
+									 IdrGraph *filtered_graph, char *msg) {
 	GrB_Matrix filtered_paths = NULL;
 	GrB_Info info = GrB_Matrix_new(&filtered_paths, GrB_BOOL, graph->n, graph->n);
 	if (info != GrB_SUCCESS) {
@@ -46,7 +45,7 @@ GrB_Info apply_valueflow_over_approx(const MRGraph *graph, GrB_Matrix *beta_reac
 	GrB_Matrix_free(beta_reach);
 	*beta_reach = filtered_paths;
 
-	info = remove_valueflow_unreachable(graph, filtered_graph, msg);
+	info = idr_remove_valueflow_unreachable(graph, filtered_graph, msg);
 	if (info != GrB_SUCCESS) {
 		return info;
 	}

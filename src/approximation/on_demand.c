@@ -1,8 +1,9 @@
-#include "on_demand.h"
-
+#include <GraphBLAS.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cfl_idr.h"
+#include "grammar/grammar.h"
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
@@ -21,9 +22,10 @@ static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
 							 GrB_ALL, n, GrB_DESC_RSC);
 }
 
-static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_approx,
+static GrB_Info refine_mr_with_grammar(const IdrGraph *graph,
+									   GrB_Matrix under_approx,
 									   GrB_Matrix over_approx,
-									   MRGrammarType grammar_type,
+									   IdrGrammarType grammar_type,
 									   GrB_Matrix *result, bool valueflow,
 									   bool filter_empty, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
@@ -75,11 +77,11 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 	GrB_Matrix confirmed_roots = NULL;
 	GrB_Matrix_new(&confirmed_roots, GrB_BOOL, n_scc, n_scc);
 
-	MRGraph *components = NULL;
+	IdrGraph *components = NULL;
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
-	split_MRGraph_into_components(&cr.condensed_graph, &components, &vertex_maps,
-								  &comp_count, msg);
+	split_IdrGraph_into_components(&cr.condensed_graph, &components, &vertex_maps,
+								   &comp_count, msg);
 
 	GrB_Index n_root_pairs = 0;
 	GrB_Matrix_nvals(&n_root_pairs, root_candidates);
@@ -133,7 +135,7 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 
 cleanup_split:
 	for (GrB_Index c = 0; c < comp_count; c++) {
-		mr_graph_free(&components[c]);
+		idr_graph_free(&components[c]);
 		free(vertex_maps[c]);
 	}
 	free(components);
@@ -151,14 +153,14 @@ cleanup_base:
 	return info;
 }
 
-GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
-					   GrB_Matrix over_approx, bool parityD, GrB_Matrix *result,
-					   bool valueflow, bool filter_empty, char *msg) {
+GrB_Info idr_get_on_demand(const IdrGraph *graph, GrB_Matrix under_approx,
+						   GrB_Matrix over_approx, bool parityD, GrB_Matrix *result,
+						   bool valueflow, bool filter_empty, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
 	// Step 1: Apply "default" grammar refinement
 
-	MRGraph reduced1 = {0};
+	IdrGraph reduced1 = {0};
 	bool reduced1_owned = false;
 	if (is_all_pairs(over_approx, graph->n)) {
 		reduced1 = *graph;
@@ -171,18 +173,18 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 	}
 
 	GrB_Matrix default_paths = NULL;
-	info = refine_mr_with_grammar(&reduced1, under_approx, over_approx, DEFAULT,
+	info = refine_mr_with_grammar(&reduced1, under_approx, over_approx, IDR_DEFAULT,
 								  &default_paths, valueflow, filter_empty, msg);
 	if (info != GrB_SUCCESS) {
 		if (reduced1_owned) {
-			mr_graph_free(&reduced1);
+			idr_graph_free(&reduced1);
 		}
 		return info;
 	}
 
 	if (parityD) {
 		if (reduced1_owned) {
-			mr_graph_free(&reduced1);
+			idr_graph_free(&reduced1);
 		}
 		*result = default_paths;
 		return GrB_SUCCESS;
@@ -190,7 +192,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 
 	// Step 2: Apply "all" grammar refinement on the result of step 1
 
-	MRGraph reduced2 = {0};
+	IdrGraph reduced2 = {0};
 	bool reduced2_owned = true;
 	if (is_all_pairs(default_paths, graph->n)) {
 		reduced2 = reduced1;
@@ -198,7 +200,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 		info = remove_not_path(&reduced1, default_paths, &reduced2, msg);
 		if (info != GrB_SUCCESS) {
 			if (reduced1_owned) {
-				mr_graph_free(&reduced1);
+				idr_graph_free(&reduced1);
 			}
 			return info;
 		}
@@ -206,14 +208,14 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 	}
 
 	if (reduced1_owned && reduced1_owned != reduced2_owned) {
-		mr_graph_free(&reduced1);
+		idr_graph_free(&reduced1);
 	}
 
 	GrB_Matrix final_paths = NULL;
-	info = refine_mr_with_grammar(&reduced2, under_approx, default_paths, ALL,
+	info = refine_mr_with_grammar(&reduced2, under_approx, default_paths, IDR_ALL,
 								  &final_paths, valueflow, filter_empty, msg);
 	if (reduced2_owned) {
-		mr_graph_free(&reduced2);
+		idr_graph_free(&reduced2);
 	}
 	GrB_Matrix_free(&default_paths);
 	if (info != GrB_SUCCESS) {

@@ -2,7 +2,7 @@
 
 #include <GraphBLAS.h>
 
-#include "approximation/mr_graph.h"
+#include "cfl_idr.h"
 
-void extractNonTrivialPaths(GrB_Matrix paths, const MRGraph *graph,
+void extractNonTrivialPaths(GrB_Matrix paths, const IdrGraph *graph,
 							GrB_Matrix *result);

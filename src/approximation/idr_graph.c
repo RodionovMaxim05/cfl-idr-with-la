@@ -1,8 +1,9 @@
-#include "mr_graph.h"
+#include <GraphBLAS.h>
 
-void mr_graph_free(const MRGraph *g) {
+#include "cfl_idr.h"
+void idr_graph_free(const IdrGraph *g) {
 	if (g == NULL) {
-		printf("MRGraph: NULL\n");
+		printf("IdrGraph: NULL\n");
 		return;
 	}
 
@@ -26,13 +27,13 @@ void mr_graph_free(const MRGraph *g) {
 	free((void *)g->close_bra);
 }
 
-void mr_graph_print(const MRGraph *g) {
+void idr_graph_print(const IdrGraph *g) {
 	if (g == NULL) {
-		printf("MRGraph: NULL\n");
+		printf("IdrGraph: NULL\n");
 		return;
 	}
 
-	printf("MRGraph: n=%llu, n_par=%ld, n_bra=%ld\n", (unsigned long long)g->n,
+	printf("IdrGraph: n=%llu, n_par=%ld, n_bra=%ld\n", (unsigned long long)g->n,
 		   g->n_par, g->n_bra);
 
 	for (int64_t i = 0; i < g->n_par; i++) {

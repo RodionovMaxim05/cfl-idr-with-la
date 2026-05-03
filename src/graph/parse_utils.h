@@ -2,6 +2,6 @@
 
 #include <GraphBLAS.h>
 
-#include "approximation/mr_graph.h"
+#include "cfl_idr.h"
 
-GrB_Info parse_graph(const char *filename, MRGraph *out);
+GrB_Info parse_graph(const char *filename, IdrGraph *out);

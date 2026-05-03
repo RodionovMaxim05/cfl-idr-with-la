@@ -12,7 +12,7 @@
 			goto cleanup;                                                           \
 	} while (0)
 
-GrB_Info build_adjacency(const MRGraph *graph, GrB_Matrix *adj_out) {
+GrB_Info build_adjacency(const IdrGraph *graph, GrB_Matrix *adj_out) {
 	GrB_Info info;
 	GrB_Matrix adj = NULL;
 
@@ -44,7 +44,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info compute_sccs(const MRGraph *graph, GrB_Matrix adj, SccResult *out,
+GrB_Info compute_sccs(const IdrGraph *graph, GrB_Matrix adj, SccResult *out,
 					  char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Vector scc_vec = NULL;
@@ -198,8 +198,8 @@ bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n) {
 	return nnz_approx >= (n * n);
 }
 
-GrB_Info remove_not_path(const MRGraph *graph, GrB_Matrix over_approx, MRGraph *out,
-						 char *msg) {
+GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
+						 IdrGraph *out, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 	SccResult sr = {0};
 	GrB_Matrix S = NULL;

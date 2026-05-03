@@ -3,7 +3,7 @@
 #include <GraphBLAS.h>
 #include <stdint.h>
 
-#include "mr_graph.h"
+#include "cfl_idr.h"
 
 typedef enum {
 	GRAMMAR_TAG_ALPHA = 0,
@@ -30,7 +30,7 @@ typedef struct {
 	size_t capacity;
 } MRCache;
 
-uint64_t get_graph_cache_hash(const MRGraph *graph);
+uint64_t get_graph_cache_hash(const IdrGraph *graph);
 
 void mr_cache_init(MRCache *c);
 

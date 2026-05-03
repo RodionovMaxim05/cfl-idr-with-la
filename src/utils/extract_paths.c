@@ -2,7 +2,7 @@
 
 #include <LAGraphX.h>
 
-void extractNonTrivialPaths(GrB_Matrix paths, const MRGraph *graph,
+void extractNonTrivialPaths(GrB_Matrix paths, const IdrGraph *graph,
 							GrB_Matrix *result) {
 	GrB_Index nvals = 0;
 	GrB_Matrix_nvals(&nvals, paths);

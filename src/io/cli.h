@@ -8,7 +8,7 @@ typedef struct {
 	const char *graph_file_path;
 	const char *grammar_str;
 	const char *output_path;
-	MRGrammarType grammar_type;
+	IdrGrammarType grammar_type;
 	int quiet;
 	int valueflow;
 	int on_demand;
@@ -17,6 +17,6 @@ typedef struct {
 
 void print_usage(const char *prog);
 
-MRGrammarType grammar_name_to_type(const char *grammar);
+IdrGrammarType grammar_name_to_type(const char *grammar);
 
 int parse_args(int argc, char *argv[], Args *out);

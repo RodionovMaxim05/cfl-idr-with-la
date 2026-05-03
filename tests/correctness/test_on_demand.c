@@ -1,10 +1,5 @@
 #include "utils.h"
 
-#include "approximation/approximation.h"
-#include "approximation/on_demand.h"
-#include "graph/parse_utils.h"
-#include "graph/valueflow_extensions.h"
-
 static char msg[LAGRAPH_MSG_LEN];
 
 #define RUN_ON_DEMAND_TEST(folder, parity_d, valueflow, expected_count,             \
@@ -22,38 +17,38 @@ static char msg[LAGRAPH_MSG_LEN];
 
 static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow,
 						   size_t expected_size, const char *expected_path) {
-	MRGraph graph = {0};
+	IdrGraph graph = {0};
 	GrB_Info info = parse_graph(graph_path, &graph);
 	assert(info == GrB_SUCCESS);
 
-	MRGraph new_graph = {0};
+	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = remove_valueflow_unreachable(&graph, &new_graph, msg);
+		info = idr_remove_valueflow_unreachable(&graph, &new_graph, msg);
 		assert(info == GrB_SUCCESS);
-		mr_graph_free(&graph);
+		idr_graph_free(&graph);
 	} else {
 		new_graph = graph;
 	}
 
 	GrB_Matrix under_approx = NULL;
-	info = get_under_approx(&new_graph, valueflow, &under_approx);
+	info = idr_get_under_approx(&new_graph, valueflow, &under_approx);
 	assert(info == GrB_SUCCESS);
 
-	MRGrammarType grammar_type;
+	IdrGrammarType grammar_type;
 	if (parity_d) {
-		grammar_type = PARITY;
+		grammar_type = IDR_PARITY;
 	} else {
-		grammar_type = ALL;
+		grammar_type = IDR_ALL;
 	}
 
 	GrB_Matrix over_approx = NULL;
-	info = get_over_approx(&new_graph, grammar_type, NULL, &over_approx, valueflow,
-						   true);
+	info = idr_get_over_approx(&new_graph, grammar_type, NULL, &over_approx,
+							   valueflow, true);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Matrix result = NULL;
-	info = get_on_demand(&new_graph, under_approx, over_approx, parity_d, &result,
-						 valueflow, true, msg);
+	info = idr_get_on_demand(&new_graph, under_approx, over_approx, parity_d,
+							 &result, valueflow, true, msg);
 	assert(info == GrB_SUCCESS);
 
 	Pair *actual = NULL;
@@ -75,7 +70,7 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 	GrB_Matrix_free(&result);
 	GrB_Matrix_free(&under_approx);
 	GrB_Matrix_free(&over_approx);
-	mr_graph_free(&new_graph);
+	idr_graph_free(&new_graph);
 }
 
 int main(void) {

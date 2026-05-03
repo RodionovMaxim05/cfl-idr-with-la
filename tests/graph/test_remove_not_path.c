@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cfl_idr.h"
 #include "graph/remove_not_path.h"
 
 static char msg[LAGRAPH_MSG_LEN];
@@ -29,7 +30,7 @@ static GrB_Index matrix_nvals(GrB_Matrix m) {
 	return nvals;
 }
 
-static GrB_Index mrgraph_nvals(const MRGraph *g) {
+static GrB_Index idr_graph_nvals(const IdrGraph *g) {
 	GrB_Index total = 0;
 	for (int64_t i = 0; i < g->n_par; i++) {
 		total += matrix_nvals(g->open_par[i]);
@@ -50,14 +51,14 @@ static bool scc_reach_has(GrB_Matrix scc_reach, GrB_Index i, GrB_Index j) {
 	return info == GrB_SUCCESS && val;
 }
 
-static MRGraph make_simple_graph(GrB_Index n, GrB_Matrix open_par,
-								 GrB_Matrix close_par) {
+static IdrGraph make_simple_graph(GrB_Index n, GrB_Matrix open_par,
+								  GrB_Matrix close_par) {
 	GrB_Matrix *op = malloc(sizeof(GrB_Matrix));
 	GrB_Matrix *cp = malloc(sizeof(GrB_Matrix));
 	op[0] = open_par;
 	cp[0] = close_par;
 
-	MRGraph g = {
+	IdrGraph g = {
 		.n = n,
 		.n_par = 1,
 		.open_par = op,
@@ -70,7 +71,7 @@ static MRGraph make_simple_graph(GrB_Index n, GrB_Matrix open_par,
 	return g;
 }
 
-static void free_simple_graph_arrays(MRGraph *g) {
+static void free_simple_graph_arrays(IdrGraph *g) {
 	free(g->open_par);
 	free(g->close_par);
 }
@@ -102,7 +103,7 @@ static void test_computeSccs_single_vertex(void) {
 	GrB_Matrix op = make_empty_matrix(1);
 	GrB_Matrix cp = make_empty_matrix(1);
 	GrB_Matrix adj = build_test_adj(1, op, cp);
-	MRGraph graph = make_simple_graph(1, op, cp);
+	IdrGraph graph = make_simple_graph(1, op, cp);
 
 	SccResult sr = {0};
 	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
@@ -125,7 +126,7 @@ static void test_computeSccs_two_disconnected_vertices(void) {
 	GrB_Matrix op = make_empty_matrix(2);
 	GrB_Matrix cp = make_empty_matrix(2);
 	GrB_Matrix adj = build_test_adj(2, op, cp);
-	MRGraph graph = make_simple_graph(2, op, cp);
+	IdrGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
 	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
@@ -158,7 +159,7 @@ static void test_computeSccs_directed_cycle_is_one_scc(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 1, 2); // B->C
 	GrB_Matrix_setElement_BOOL(cp, true, 2, 0); // C->A
 	GrB_Matrix adj = build_test_adj(3, op, cp);
-	MRGraph graph = make_simple_graph(3, op, cp);
+	IdrGraph graph = make_simple_graph(3, op, cp);
 
 	SccResult sr = {0};
 	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
@@ -186,7 +187,7 @@ static void test_computeSccs_dag_transitive_closure(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 2, 3); // C->D
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2); // B->C
 	GrB_Matrix adj = build_test_adj(4, op, cp);
-	MRGraph graph = make_simple_graph(4, op, cp);
+	IdrGraph graph = make_simple_graph(4, op, cp);
 
 	SccResult sr = {0};
 	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
@@ -241,7 +242,7 @@ static void test_computeSccs_parallel_edges(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1);
 	GrB_Matrix_setElement_BOOL(cp, true, 0, 1);
 	GrB_Matrix adj = build_test_adj(2, op, cp);
-	MRGraph graph = make_simple_graph(2, op, cp);
+	IdrGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
 	GrB_Info info = compute_sccs(&graph, adj, &sr, msg);
@@ -273,17 +274,17 @@ static void test_computeSccs_parallel_edges(void) {
 static void test_removeNotPath_empty_graph_empty_approx(void) {
 	GrB_Matrix op = make_empty_matrix(0);
 	GrB_Matrix cp = make_empty_matrix(0);
-	MRGraph graph = make_simple_graph(0, op, cp);
+	IdrGraph graph = make_simple_graph(0, op, cp);
 
 	GrB_Matrix over_approx = make_empty_matrix(0);
 
-	MRGraph result = {0};
+	IdrGraph result = {0};
 	GrB_Info info = remove_not_path(&graph, over_approx, &result, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(mrgraph_nvals(&result) == 0);
+	assert(idr_graph_nvals(&result) == 0);
 
-	mr_graph_free(&result);
+	idr_graph_free(&result);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
 	GrB_Matrix_free(&over_approx);
@@ -296,21 +297,21 @@ static void test_removeNotPath_removes_edge_not_in_approx(void) {
 	GrB_Matrix cp = make_empty_matrix(3);
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1); // A->B
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2); // B->C
-	MRGraph graph = make_simple_graph(3, op, cp);
+	IdrGraph graph = make_simple_graph(3, op, cp);
 
 	GrB_Index srcs[] = {0};
 	GrB_Index dsts[] = {1};
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
-	MRGraph result = {0};
+	IdrGraph result = {0};
 	GrB_Info info = remove_not_path(&graph, over_approx, &result, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(mrgraph_nvals(&result) == 1);
+	assert(idr_graph_nvals(&result) == 1);
 	assert(matrix_has_edge(result.open_par[0], 0, 1));
 	assert(!matrix_has_edge(result.close_par[0], 1, 2));
 
-	mr_graph_free(&result);
+	idr_graph_free(&result);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -325,22 +326,22 @@ static void test_removeNotPath_keeps_edge_via_indirect_scc(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1); // A->B
 	GrB_Matrix_setElement_BOOL(op, true, 1, 2); // B->C
 	GrB_Matrix_setElement_BOOL(cp, true, 2, 0); // C->A
-	MRGraph graph = make_simple_graph(3, op, cp);
+	IdrGraph graph = make_simple_graph(3, op, cp);
 
 	GrB_Index srcs[] = {0};
 	GrB_Index dsts[] = {2};
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
-	MRGraph result = {0};
+	IdrGraph result = {0};
 	GrB_Info info = remove_not_path(&graph, over_approx, &result, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(mrgraph_nvals(&result) == 3);
+	assert(idr_graph_nvals(&result) == 3);
 	assert(matrix_has_edge(result.open_par[0], 0, 1));
 	assert(matrix_has_edge(result.open_par[0], 1, 2));
 	assert(matrix_has_edge(result.close_par[0], 2, 0));
 
-	mr_graph_free(&result);
+	idr_graph_free(&result);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -357,24 +358,24 @@ static void test_removeNotPath_multiple_sccs_allowed_path(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 2, 3); // C->D
 	GrB_Matrix_setElement_BOOL(op, true, 3, 2); // D->C
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2); // B->C
-	MRGraph graph = make_simple_graph(4, op, cp);
+	IdrGraph graph = make_simple_graph(4, op, cp);
 
 	GrB_Index srcs[] = {0};
 	GrB_Index dsts[] = {3};
 	GrB_Matrix over_approx = make_over_approx(4, srcs, dsts, 1);
 
-	MRGraph result = {0};
+	IdrGraph result = {0};
 	GrB_Info info = remove_not_path(&graph, over_approx, &result, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(mrgraph_nvals(&result) == 5);
+	assert(idr_graph_nvals(&result) == 5);
 	assert(matrix_has_edge(result.open_par[0], 0, 1));
 	assert(matrix_has_edge(result.open_par[0], 1, 0));
 	assert(matrix_has_edge(result.open_par[0], 2, 3));
 	assert(matrix_has_edge(result.open_par[0], 3, 2));
 	assert(matrix_has_edge(result.close_par[0], 1, 2));
 
-	mr_graph_free(&result);
+	idr_graph_free(&result);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -389,22 +390,22 @@ static void test_removeNotPath_removes_inter_scc_edge_not_covered(void) {
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1); // A->B
 	GrB_Matrix_setElement_BOOL(op, true, 2, 2); // C->C
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2); // B->C
-	MRGraph graph = make_simple_graph(3, op, cp);
+	IdrGraph graph = make_simple_graph(3, op, cp);
 
 	GrB_Index srcs[] = {0};
 	GrB_Index dsts[] = {1};
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
-	MRGraph result = {0};
+	IdrGraph result = {0};
 	GrB_Info info = remove_not_path(&graph, over_approx, &result, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(mrgraph_nvals(&result) == 1);
+	assert(idr_graph_nvals(&result) == 1);
 	assert(matrix_has_edge(result.open_par[0], 0, 1));
 	assert(!matrix_has_edge(result.close_par[0], 1, 2));
 	assert(!matrix_has_edge(result.open_par[0], 2, 2));
 
-	mr_graph_free(&result);
+	idr_graph_free(&result);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
