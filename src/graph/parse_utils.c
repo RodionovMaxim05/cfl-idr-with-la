@@ -4,7 +4,7 @@
 #include "parser.h"
 #include "symbol_list.h"
 
-GrB_Info parse_graph(const char *filename, MRGraph *out) {
+GrB_Info parse_graph(const char *filename, IdrGraph *out) {
 	FILE *graph_file = fopen(filename, "r");
 	if (graph_file == NULL) {
 		fprintf(stderr, "\x1B[31m[ERROR]\033[0m Could not open graph file: %s\n",
@@ -19,8 +19,8 @@ GrB_Info parse_graph(const char *filename, MRGraph *out) {
 	GraphMatrices gm = get_grb_matrices_from_graph(graph, &symbol_list);
 	free(graph.edges);
 
-	GrB_Info info = build_mr_graph(&gm, &symbol_list, graph.node_count,
-								   &DefaultTerminalFormat, out);
+	GrB_Info info = build_idr_graph(&gm, &symbol_list, graph.node_count,
+									&DefaultTerminalFormat, out);
 
 	free(gm.matrix_symbols);
 	symbol_list_free(&symbol_list);

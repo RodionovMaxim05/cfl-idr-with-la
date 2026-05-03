@@ -21,8 +21,8 @@ static GrB_Info get_scc_selector(GrB_Index n, GrB_Index n_scc,
 	return GrB_SUCCESS;
 }
 
-GrB_Info remove_valueflow_unreachable(const MRGraph *graph, MRGraph *out,
-									  char *msg) {
+GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out,
+										  char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Vector v_has_open = NULL, v_has_close = NULL;
@@ -154,7 +154,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info filter_bracket_paths(const MRGraph *graph, GrB_Matrix paths,
+GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
 							  GrB_Matrix *filtered_out, char *msg) {
 	GrB_Info info;
 	GrB_Matrix S = NULL;

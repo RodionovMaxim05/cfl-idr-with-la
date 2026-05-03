@@ -59,7 +59,7 @@ static uint64_t fnv1a_feed_matrix(uint64_t hash, GrB_Matrix m, const char *tag,
 	return hash;
 }
 
-uint64_t get_graph_cache_hash(const MRGraph *graph) {
+uint64_t get_graph_cache_hash(const IdrGraph *graph) {
 	uint64_t h = FNV_OFFSET_BASIS;
 	h = fnv1a_update(h, &graph->n, sizeof(graph->n));
 	for (int64_t i = 0; i < graph->n_par; i++) {

@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "cfl_idr.h"
+#include "graph/parse_utils.h"
+
 typedef struct {
 	GrB_Index row;
 	GrB_Index col;

@@ -24,6 +24,7 @@ target_compile_options(cfl_lib PRIVATE -Wall -Wextra -Wpedantic) # -Werror)
 
 target_include_directories(cfl_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/include
     ${PARSER_DIR}
     ${LAGRAPH_DIR}/include
     ${CMAKE_SOURCE_DIR}/vendor/uthash

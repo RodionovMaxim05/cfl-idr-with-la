@@ -5,18 +5,9 @@
 #include <LAGraphX.h>
 #include <stdbool.h>
 
-#define NT_START 0
+#include "cfl_idr.h"
 
-typedef enum {
-	UNKNOWN = -1,
-	DEFAULT,
-	PARITY,
-	PARITY2,
-	SE,
-	PROJECT,
-	EXCLUDE,
-	ALL
-} MRGrammarType;
+#define NT_START 0
 
 typedef struct {
 	int64_t nonterms_count;

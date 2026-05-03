@@ -6,7 +6,7 @@
 #include "approximation/approximation.h"
 #include "approximation/mutual_refinement.h"
 
-GrB_Info condensate_from_under_approx(const MRGraph *graph, GrB_Matrix under_approx,
+GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_approx,
 									  CondensationResult *out, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 

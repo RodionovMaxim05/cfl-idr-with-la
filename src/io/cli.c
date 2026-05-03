@@ -29,35 +29,35 @@ void print_usage(const char *prog) {
 			prog);
 }
 
-MRGrammarType grammar_name_to_type(const char *grammar) {
+IdrGrammarType grammar_name_to_type(const char *grammar) {
 	if (strcmp(grammar, "default") == 0) {
-		return DEFAULT;
+		return IDR_DEFAULT;
 	}
 	if (strcmp(grammar, "parity") == 0) {
-		return PARITY;
+		return IDR_PARITY;
 	}
 	if (strcmp(grammar, "parity2") == 0) {
-		return PARITY2;
+		return IDR_PARITY2;
 	}
 	if (strcmp(grammar, "se") == 0) {
-		return SE;
+		return IDR_SE;
 	}
 	if (strcmp(grammar, "project") == 0) {
-		return PROJECT;
+		return IDR_PROJECT;
 	}
 	if (strcmp(grammar, "exclude") == 0) {
-		return EXCLUDE;
+		return IDR_EXCLUDE;
 	}
 	if (strcmp(grammar, "all") == 0) {
-		return ALL;
+		return IDR_ALL;
 	}
 	if (strcmp(grammar, "parityD") == 0) {
-		return PARITY;
+		return IDR_PARITY;
 	}
 	if (strcmp(grammar, "on-demand") == 0) {
-		return ALL;
+		return IDR_ALL;
 	}
-	return UNKNOWN;
+	return IDR_UNKNOWN;
 }
 
 int parse_args(int argc, char *argv[], Args *out) {
@@ -110,8 +110,8 @@ int parse_args(int argc, char *argv[], Args *out) {
 		on_demand = 1;
 	}
 
-	MRGrammarType grammar_type = grammar_name_to_type(grammar_str);
-	if (grammar_type == UNKNOWN) {
+	IdrGrammarType grammar_type = grammar_name_to_type(grammar_str);
+	if (grammar_type == IDR_UNKNOWN) {
 		fprintf(stderr, "Error: Invalid grammar '%s'\n", grammar_str);
 		fprintf(stderr, "Run with -h to see supported grammars\n");
 		return 0;

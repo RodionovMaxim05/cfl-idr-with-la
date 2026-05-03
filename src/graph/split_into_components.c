@@ -20,7 +20,7 @@ static int compare_vertex_comp(const void *a, const void *b) {
 	return (comp1 > comp2) - (comp1 < comp2);
 }
 
-static GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
+static GrB_Info IdrGraph_to_adjacency(IdrGraph *graph, GrB_Matrix *A_out) {
 	GrB_Matrix A = NULL;
 	GrB_Matrix_new(&A, GrB_BOOL, graph->n, graph->n);
 
@@ -42,9 +42,9 @@ static GrB_Info MRGraph_to_adjacency(MRGraph *graph, GrB_Matrix *A_out) {
 	return GrB_SUCCESS;
 }
 
-static GrB_Info extract_component_MRgraph(MRGraph *graph, GrB_Index *verts,
-										  GrB_Index verts_count, MRGraph *out,
-										  char *msg) {
+static GrB_Info extract_component_IdrGraph(IdrGraph *graph, GrB_Index *verts,
+										   GrB_Index verts_count, IdrGraph *out,
+										   char *msg) {
 	out->n = verts_count;
 	out->n_par = 0;
 	out->n_bra = 0;
@@ -124,13 +124,13 @@ static GrB_Info extract_component_MRgraph(MRGraph *graph, GrB_Index *verts,
 	return GrB_SUCCESS;
 }
 
-GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
-									   GrB_Index ***out_vertex_maps,
-									   GrB_Index *out_count, char *msg) {
+GrB_Info split_IdrGraph_into_components(IdrGraph *graph, IdrGraph **out_components,
+										GrB_Index ***out_vertex_maps,
+										GrB_Index *out_count, char *msg) {
 	GrB_Index n = graph->n;
 
 	GrB_Matrix A = NULL;
-	MRGraph_to_adjacency(graph, &A);
+	IdrGraph_to_adjacency(graph, &A);
 
 	GrB_Matrix A_T = NULL;
 	GrB_Matrix_new(&A_T, GrB_BOOL, n, n);
@@ -166,7 +166,7 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 		}
 	}
 
-	MRGraph *components = (MRGraph *)malloc(unique_count * sizeof(MRGraph));
+	IdrGraph *components = (IdrGraph *)malloc(unique_count * sizeof(IdrGraph));
 	GrB_Index **vertex_maps =
 		(GrB_Index **)malloc(unique_count * sizeof(GrB_Index *));
 	GrB_Index valid_count = 0;
@@ -186,8 +186,8 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 				verts[k] = v_list[start + k].original_idx;
 			}
 
-			extract_component_MRgraph(graph, verts, count, &components[valid_count],
-									  msg);
+			extract_component_IdrGraph(graph, verts, count, &components[valid_count],
+									   msg);
 			vertex_maps[valid_count] = verts;
 			valid_count++;
 		}
@@ -204,7 +204,7 @@ GrB_Info split_MRGraph_into_components(MRGraph *graph, MRGraph **out_components,
 	}
 
 	if (valid_count != unique_count) {
-		MRGraph *tmp_comp = realloc(components, valid_count * sizeof(MRGraph));
+		IdrGraph *tmp_comp = realloc(components, valid_count * sizeof(IdrGraph));
 		if (tmp_comp == NULL) {
 			free(components);
 		}

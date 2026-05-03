@@ -3,15 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "approximation/mr_graph.h"
-#include "graph/valueflow_extensions.h"
+#include "cfl_idr.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 
 // Utils
 
-static MRGraph init_graph(GrB_Index n) {
-	MRGraph g;
+static IdrGraph init_graph(GrB_Index n) {
+	IdrGraph g;
 	g.n = n;
 	g.n_par = 0;
 	g.open_par = NULL;
@@ -25,7 +24,7 @@ static MRGraph init_graph(GrB_Index n) {
 	return g;
 }
 
-static GrB_Index count_edges(const MRGraph *g) {
+static GrB_Index count_edges(const IdrGraph *g) {
 	GrB_Index nvals = 0;
 	GrB_Index total = 0;
 	if (g->normal) {
@@ -44,85 +43,85 @@ static GrB_Index count_edges(const MRGraph *g) {
 // Tests
 
 static void test_no_ob_or_cb_removes_all(void) {
-	MRGraph g = init_graph(2);
+	IdrGraph g = init_graph(2);
 	GrB_Matrix_new(&g.normal, GrB_BOOL, 2, 2);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 0, 1); // Edge A->B
 
-	MRGraph out = {0};
-	remove_valueflow_unreachable(&g, &out, msg);
+	IdrGraph out = {0};
+	idr_remove_valueflow_unreachable(&g, &out, msg);
 
 	assert(count_edges(&out) == 0);
 
-	mr_graph_free(&g);
-	mr_graph_free(&out);
+	idr_graph_free(&g);
+	idr_graph_free(&out);
 }
 
 static void test_simple_path_preserved(void) {
 	// A(0) -ob-> B(1) -normal-> C(2) -cb-> C(2)
-	MRGraph g = init_graph(3);
+	IdrGraph g = init_graph(3);
 	GrB_Matrix_new(&g.normal, GrB_BOOL, 3, 3);
 	GrB_Matrix_setElement_BOOL(g.open_bra[0], true, 0, 1);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 1, 2);
 	GrB_Matrix_setElement_BOOL(g.close_bra[0], true, 2, 2);
 
-	MRGraph out = {0};
-	remove_valueflow_unreachable(&g, &out, msg);
+	IdrGraph out = {0};
+	idr_remove_valueflow_unreachable(&g, &out, msg);
 
 	assert(count_edges(&out) == 3);
 
-	mr_graph_free(&g);
-	mr_graph_free(&out);
+	idr_graph_free(&g);
+	idr_graph_free(&out);
 }
 
 static void test_reachable_but_no_cb_removed(void) {
 	// A(0) -ob-> B(1) -normal-> C(2)
-	MRGraph g = init_graph(3);
+	IdrGraph g = init_graph(3);
 	GrB_Matrix_new(&g.normal, GrB_BOOL, 3, 3);
 	GrB_Matrix_setElement_BOOL(g.open_bra[0], true, 0, 1);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 1, 2);
 
-	MRGraph out = {0};
-	remove_valueflow_unreachable(&g, &out, msg);
+	IdrGraph out = {0};
+	idr_remove_valueflow_unreachable(&g, &out, msg);
 
 	assert(count_edges(&out) == 0);
 
-	mr_graph_free(&g);
-	mr_graph_free(&out);
+	idr_graph_free(&g);
+	idr_graph_free(&out);
 }
 
 static void test_cycle_preserved(void) {
 	// A(0)-ob->B(1), B-normal->C(2), C-normal->B, C-cb->C
-	MRGraph g = init_graph(3);
+	IdrGraph g = init_graph(3);
 	GrB_Matrix_new(&g.normal, GrB_BOOL, 3, 3);
 	GrB_Matrix_setElement_BOOL(g.open_bra[0], true, 0, 1);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 1, 2);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 2, 1);
 	GrB_Matrix_setElement_BOOL(g.close_bra[0], true, 2, 2);
 
-	MRGraph out = {0};
-	remove_valueflow_unreachable(&g, &out, msg);
+	IdrGraph out = {0};
+	idr_remove_valueflow_unreachable(&g, &out, msg);
 
 	assert(count_edges(&out) == 4);
 
-	mr_graph_free(&g);
-	mr_graph_free(&out);
+	idr_graph_free(&g);
+	idr_graph_free(&out);
 }
 
 static void test_invalid_cb_to_ob_path(void) {
 	// A(0)-cb->B(1)-normal->C(2)-ob->D(3)
-	MRGraph g = init_graph(4);
+	IdrGraph g = init_graph(4);
 	GrB_Matrix_new(&g.normal, GrB_BOOL, 4, 4);
 	GrB_Matrix_setElement_BOOL(g.close_bra[0], true, 0, 1);
 	GrB_Matrix_setElement_BOOL(g.normal, true, 1, 2);
 	GrB_Matrix_setElement_BOOL(g.open_bra[0], true, 2, 3);
 
-	MRGraph out = {0};
-	remove_valueflow_unreachable(&g, &out, msg);
+	IdrGraph out = {0};
+	idr_remove_valueflow_unreachable(&g, &out, msg);
 
 	assert(count_edges(&out) == 0);
 
-	mr_graph_free(&g);
-	mr_graph_free(&out);
+	idr_graph_free(&g);
+	idr_graph_free(&out);
 }
 
 int main(void) {

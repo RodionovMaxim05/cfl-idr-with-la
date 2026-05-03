@@ -13,7 +13,7 @@
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
-GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
+GrB_Matrix *assemble_adj_matrices(const IdrGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
 	GrB_Matrix *adj = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
 
@@ -32,23 +32,24 @@ GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	return adj;
 }
 
-GrB_Info get_under_approx(const MRGraph *graph, bool valueflow, GrB_Matrix *result) {
+GrB_Info idr_get_under_approx(const IdrGraph *graph, bool valueflow,
+							  GrB_Matrix *result) {
 	char msg[LAGRAPH_MSG_LEN];
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
 
-	MRGraph *components = NULL;
+	IdrGraph *components = NULL;
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
-	info = split_MRGraph_into_components(graph, &components, &vertex_maps,
-										 &comp_count, msg);
+	info = split_IdrGraph_into_components(graph, &components, &vertex_maps,
+										  &comp_count, msg);
 	if (info != GrB_SUCCESS) {
 		return info;
 	}
 
 	for (GrB_Index c = 0; c < comp_count; c++) {
-		MRGraph *comp = &components[c];
+		IdrGraph *comp = &components[c];
 		GrB_Index *vmap = vertex_maps[c];
 
 		MRGrammar_t grammar =
@@ -104,7 +105,7 @@ GrB_Info get_under_approx(const MRGraph *graph, bool valueflow, GrB_Matrix *resu
 		GrB_free(&all_paths_t);
 		grammar_free(&grammar);
 		free((void *)adj_matrices);
-		mr_graph_free(comp);
+		idr_graph_free(comp);
 		free(vmap);
 
 		if (info != GrB_SUCCESS) {
@@ -117,9 +118,9 @@ GrB_Info get_under_approx(const MRGraph *graph, bool valueflow, GrB_Matrix *resu
 	return info;
 }
 
-GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
-						 GrB_Matrix under_approx, GrB_Matrix *result, bool valueflow,
-						 bool filter_empty) {
+GrB_Info idr_get_over_approx(const IdrGraph *graph, IdrGrammarType grammar_type,
+							 GrB_Matrix under_approx, GrB_Matrix *result,
+							 bool valueflow, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 

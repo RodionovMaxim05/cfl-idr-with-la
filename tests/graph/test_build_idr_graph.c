@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cfl_idr.h"
 #include "graph/convert_graph.h"
 #include "symbol_list.h"
 #include "terminal/terminal_format.h"
@@ -75,7 +76,7 @@ static void free_matrix_set(MatrixSet *ms) {
 	symbol_list_free(&ms->symbol_list);
 }
 
-static void free_mr_graph_arrays(MRGraph *g) {
+static void free_idr_graph_arrays(IdrGraph *g) {
 	free(g->open_par);
 	free(g->close_par);
 	free(g->open_bra);
@@ -85,16 +86,16 @@ static void free_mr_graph_arrays(MRGraph *g) {
 // Tests
 
 static void test_null_arguments(void) {
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GraphMatrices gm = {0};
 	SymbolList sl = symbol_list_create();
 
-	assert(build_mr_graph(NULL, &sl, 3, &DefaultTerminalFormat, &out) ==
+	assert(build_idr_graph(NULL, &sl, 3, &DefaultTerminalFormat, &out) ==
 		   GrB_INVALID_VALUE);
-	assert(build_mr_graph(&gm, NULL, 3, &DefaultTerminalFormat, &out) ==
+	assert(build_idr_graph(&gm, NULL, 3, &DefaultTerminalFormat, &out) ==
 		   GrB_INVALID_VALUE);
-	assert(build_mr_graph(&gm, &sl, 3, NULL, &out) == GrB_INVALID_VALUE);
-	assert(build_mr_graph(&gm, &sl, 3, &DefaultTerminalFormat, NULL) ==
+	assert(build_idr_graph(&gm, &sl, 3, NULL, &out) == GrB_INVALID_VALUE);
+	assert(build_idr_graph(&gm, &sl, 3, &DefaultTerminalFormat, NULL) ==
 		   GrB_INVALID_VALUE);
 
 	symbol_list_free(&sl);
@@ -103,9 +104,9 @@ static void test_null_arguments(void) {
 static void test_empty_symbol_list(void) {
 	SymbolList sl = symbol_list_create();
 	GraphMatrices gm = {.matrices = NULL, .matrix_symbols = NULL, .count = 0};
-	MRGraph out = {0};
+	IdrGraph out = {0};
 
-	GrB_Info info = build_mr_graph(&gm, &sl, 3, &DefaultTerminalFormat, &out);
+	GrB_Info info = build_idr_graph(&gm, &sl, 3, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -126,9 +127,9 @@ static void test_single_parenthesis_pair(void) {
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[0], true, 0, 1);
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[1], true, 1, 0);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 
 	assert(info == GrB_SUCCESS);
 
@@ -142,7 +143,7 @@ static void test_single_parenthesis_pair(void) {
 	assert(matrix_has_edge(out.open_par[0], 0, 1));
 	assert(matrix_has_edge(out.close_par[0], 1, 0));
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -155,9 +156,9 @@ static void test_single_bracket_pair(void) {
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[0], true, 0, 2);
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[1], true, 2, 0);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 
 	assert(info == GrB_SUCCESS);
 
@@ -171,7 +172,7 @@ static void test_single_bracket_pair(void) {
 	assert(matrix_has_edge(out.open_bra[0], 0, 2));
 	assert(matrix_has_edge(out.close_bra[0], 2, 0));
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -186,9 +187,9 @@ static void test_multiple_parenthesis_pairs(void) {
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[2], true, 1, 0);
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[3], true, 3, 2);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 2);
@@ -212,7 +213,7 @@ static void test_multiple_parenthesis_pairs(void) {
 	assert(out.open_bra == NULL);
 	assert(out.close_bra == NULL);
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -224,9 +225,9 @@ static void test_normal_matrix(void) {
 
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[0], true, 0, 2);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -238,7 +239,7 @@ static void test_normal_matrix(void) {
 	assert(out.normal == ms.gm.matrices[0]);
 	assert(matrix_has_edge(out.normal, 0, 2));
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -251,9 +252,9 @@ static void test_empty_close_registers_pair(void) {
 	// cp_0 is empty, op_0 has an edge
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[0], true, 1, 0);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -262,7 +263,7 @@ static void test_empty_close_registers_pair(void) {
 	assert(out.open_par == NULL);
 	assert(out.close_bra == NULL);
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -275,9 +276,9 @@ static void test_empty_open_does_not_register_pair(void) {
 	// op_0 is empty, cp_0 has an edge
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[1], true, 1, 0);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -287,7 +288,7 @@ static void test_empty_open_does_not_register_pair(void) {
 	assert(out.close_bra == NULL);
 	assert(out.normal == NULL);
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
@@ -303,9 +304,9 @@ static void test_mixed_all_types(void) {
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[3], true, 2, 0);
 	GrB_Matrix_setElement_BOOL(ms.gm.matrices[4], true, 0, 3);
 
-	MRGraph out = {0};
+	IdrGraph out = {0};
 	GrB_Info info =
-		build_mr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		build_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 1);
@@ -317,7 +318,7 @@ static void test_mixed_all_types(void) {
 	assert(matrix_has_edge(out.close_bra[0], 2, 0));
 	assert(matrix_has_edge(out.normal, 0, 3));
 
-	free_mr_graph_arrays(&out);
+	free_idr_graph_arrays(&out);
 	free_matrix_set(&ms);
 }
 
