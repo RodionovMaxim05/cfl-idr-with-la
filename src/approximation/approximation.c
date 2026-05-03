@@ -7,9 +7,11 @@
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
+#include "graph/valueflow_extensions.h"
 #include "mr_cache.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
+#include "valueflow_approx.h"
 
 GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
@@ -30,7 +32,7 @@ GrB_Matrix *assemble_adj_matrices(const MRGraph *graph) {
 	return adj;
 }
 
-GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
+GrB_Info get_under_approx(const MRGraph *graph, bool valueflow, GrB_Matrix *result) {
 	char msg[LAGRAPH_MSG_LEN];
 	GrB_Info info = GrB_SUCCESS;
 
@@ -68,6 +70,14 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 		GrB_Matrix comp_result = NULL;
 		GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n);
 		extractNonTrivialPaths(paths[0], comp, &comp_result);
+
+		if (valueflow) {
+			info = apply_valueflow_under_approx(paths, adj_matrices, grammar, comp,
+												&comp_result, msg);
+			if (info != GrB_SUCCESS) {
+				goto cleanup_comp;
+			}
+		}
 
 		GrB_Index nnz = 0;
 		GrB_Matrix_nvals(&nnz, comp_result);
@@ -108,7 +118,7 @@ GrB_Info get_under_approx(const MRGraph *graph, GrB_Matrix *result) {
 }
 
 GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
-						 GrB_Matrix under_approx, GrB_Matrix *result,
+						 GrB_Matrix under_approx, GrB_Matrix *result, bool valueflow,
 						 bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
@@ -117,7 +127,8 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 	mr_cache_init(&cache);
 
 	if (under_approx == NULL) {
-		return mutual_refinement(graph, grammar_type, result, filter_empty, &cache);
+		return mutual_refinement(graph, grammar_type, result, valueflow,
+								 filter_empty, &cache);
 	}
 
 	CondensationResult cr = {0};
@@ -130,7 +141,7 @@ GrB_Info get_over_approx(const MRGraph *graph, MRGrammarType grammar_type,
 
 	GrB_Matrix mr_result = NULL;
 	info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-							 filter_empty, &cache);
+							 valueflow, filter_empty, &cache);
 	if (info != GrB_SUCCESS) {
 		goto cleanup;
 	}

@@ -1,6 +1,7 @@
 #include "approximation/approximation.h"
 #include "approximation/on_demand.h"
 #include "graph/parse_utils.h"
+#include "graph/valueflow_extensions.h"
 #include "io/cli.h"
 #include "io/output.h"
 
@@ -27,12 +28,20 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
+	MRGraph filtered_graph = {0};
+	if (args.valueflow) {
+		remove_valueflow_unreachable(&refined_graph, &filtered_graph, msg);
+		mr_graph_free(&refined_graph);
+	} else {
+		filtered_graph = refined_graph;
+	}
+
 	// Under approximation
 	GrB_Matrix under_result = NULL;
-	info = get_under_approx(&refined_graph, &under_result);
+	info = get_under_approx(&filtered_graph, args.valueflow, &under_result);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error in under-approximation: %d\n", info);
-		mr_graph_free(&refined_graph);
+		mr_graph_free(&filtered_graph);
 		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
@@ -43,12 +52,12 @@ int main(int argc, char *argv[]) {
 
 	// Over approximation
 	GrB_Matrix over_result = NULL;
-	info = get_over_approx(&refined_graph, args.grammar_type, under_result,
-						   &over_result, true);
+	info = get_over_approx(&filtered_graph, args.grammar_type, under_result,
+						   &over_result, args.valueflow, true);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error in over-approximation: %d\n", info);
 		GrB_Matrix_free(&under_result);
-		mr_graph_free(&refined_graph);
+		mr_graph_free(&filtered_graph);
 		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
@@ -63,7 +72,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Error: Cannot open output file '%s'\n", output_file);
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
-		mr_graph_free(&refined_graph);
+		mr_graph_free(&filtered_graph);
 		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
@@ -79,7 +88,7 @@ int main(int argc, char *argv[]) {
 		fclose(out);
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
-		mr_graph_free(&refined_graph);
+		mr_graph_free(&filtered_graph);
 		LAGraph_Finalize(msg);
 		printf("Analysis completed. Results written to %s\n", output_file);
 		return EXIT_SUCCESS;
@@ -87,14 +96,14 @@ int main(int argc, char *argv[]) {
 
 	// On-demand refinement
 	GrB_Matrix on_demand_result = NULL;
-	info = get_on_demand(&refined_graph, under_result, over_result, args.parity_d,
-						 &on_demand_result, true, msg);
+	info = get_on_demand(&filtered_graph, under_result, over_result, args.parity_d,
+						 &on_demand_result, args.valueflow, true, msg);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error in on-demand refinement: %d\n", info);
 		fclose(out);
 		GrB_Matrix_free(&under_result);
 		GrB_Matrix_free(&over_result);
-		mr_graph_free(&refined_graph);
+		mr_graph_free(&filtered_graph);
 		LAGraph_Finalize(msg);
 		return EXIT_FAILURE;
 	}
@@ -113,7 +122,7 @@ int main(int argc, char *argv[]) {
 	GrB_Matrix_free(&under_result);
 	GrB_Matrix_free(&over_result);
 	GrB_Matrix_free(&on_demand_result);
-	mr_graph_free(&refined_graph);
+	mr_graph_free(&filtered_graph);
 	LAGraph_Finalize(msg);
 
 	printf("On-demand refinement completed. Results written to %s\n", output_file);

@@ -10,6 +10,7 @@ typedef struct {
 	const char *output_path;
 	MRGrammarType grammar_type;
 	int quiet;
+	int valueflow;
 	int on_demand;
 	int parity_d;
 } Args;

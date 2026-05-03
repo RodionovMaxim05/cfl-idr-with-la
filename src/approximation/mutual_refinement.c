@@ -11,6 +11,7 @@
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "utils/extract_paths.h"
+#include "valueflow_approx.h"
 
 static GrB_Index count_edges(const MRGraph *graph) {
 	GrB_Index total = 0, nvals = 0;
@@ -260,8 +261,9 @@ cleanup:
 }
 
 GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_type,
-								  GrB_Matrix *result, bool filter_empty,
-								  const TargetPath *target_path, MRCache *cache) {
+								  GrB_Matrix *result, bool valueflow,
+								  bool filter_empty, const TargetPath *target_path,
+								  MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	bool has_normal = (graph->normal != NULL);
@@ -419,6 +421,16 @@ GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_ty
 		final_graph = cur_graph;
 	}
 
+	MRGraph filtered_graph = {0};
+	if (valueflow) {
+		info = apply_valueflow_over_approx(final_graph, &beta_reach, &filtered_graph,
+										   msg);
+		if (info != GrB_SUCCESS) {
+			free_refined_graph(&filtered_graph);
+			goto cleanup_exclude;
+		}
+	}
+
 	GrB_Index final_edge_count = count_edges(final_graph);
 
 	// Check convergence
@@ -435,9 +447,11 @@ GrB_Info mutual_refinement_single(const MRGraph *graph, MRGrammarType grammar_ty
 								 graph->n);
 	} else {
 		// Recursive refinement
-		info = mutual_refinement_single(final_graph, grammar_type, result,
+		info = mutual_refinement_single(final_graph, grammar_type, result, valueflow,
 										filter_empty, target_path, cache);
 	}
+
+	free_refined_graph(&filtered_graph);
 
 cleanup_exclude:
 	free((void *)exclude_edges);
@@ -461,10 +475,12 @@ cleanup_alpha:
 	return info;
 }
 
-GrB_Info mutual_refinement_with_components(
-	MRGraph *components, GrB_Index **vertex_maps, GrB_Index comp_count,
-	GrB_Index global_n, MRGrammarType grammar_type, GrB_Matrix *result,
-	bool filter_empty, const TargetPath *target_path, MRCache *cache) {
+GrB_Info
+mutual_refinement_with_components(MRGraph *components, GrB_Index **vertex_maps,
+								  GrB_Index comp_count, GrB_Index global_n,
+								  MRGrammarType grammar_type, GrB_Matrix *result,
+								  bool valueflow, bool filter_empty,
+								  const TargetPath *target_path, MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
@@ -510,15 +526,15 @@ GrB_Info mutual_refinement_with_components(
 			GrB_Matrix_free(&single_path);
 
 			TargetPath local_target = {.src = local_src, .tgt = local_tgt};
-			info =
-				mutual_refinement_single(&reduced_comp, grammar_type, &comp_result,
-										 filter_empty, &local_target, cache);
+			info = mutual_refinement_single(&reduced_comp, grammar_type,
+											&comp_result, valueflow, filter_empty,
+											&local_target, cache);
 			if (reduced_owned) {
 				mr_graph_free(&reduced_comp);
 			}
 		} else {
 			info = mutual_refinement_single(comp, grammar_type, &comp_result,
-											filter_empty, NULL, cache);
+											valueflow, filter_empty, NULL, cache);
 		}
 
 		if (info != GrB_SUCCESS) {
@@ -548,7 +564,8 @@ cleanup:
 }
 
 GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
-						   GrB_Matrix *result, bool filter_empty, MRCache *cache) {
+						   GrB_Matrix *result, bool valueflow, bool filter_empty,
+						   MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
@@ -564,7 +581,7 @@ GrB_Info mutual_refinement(const MRGraph *graph, MRGrammarType grammar_type,
 
 	info = mutual_refinement_with_components(components, vertex_maps, comp_count,
 											 graph->n, grammar_type, result,
-											 filter_empty, NULL, cache);
+											 valueflow, filter_empty, NULL, cache);
 
 	for (GrB_Index c = 0; c < comp_count; c++) {
 		mr_graph_free(&components[c]);

@@ -10,6 +10,8 @@ typedef struct {
 	GrB_Matrix scc_reach;
 } SccResult;
 
+GrB_Info build_adjacency(const MRGraph *graph, GrB_Matrix *adj_out);
+
 GrB_Info compute_sccs(const MRGraph *graph, GrB_Matrix adj, SccResult *out,
 					  char *msg);
 
