@@ -12,7 +12,7 @@
 			goto cleanup;                                                           \
 	} while (0)
 
-static GrB_Info build_adjacency(const MRGraph *graph, GrB_Matrix *adj_out) {
+GrB_Info build_adjacency(const MRGraph *graph, GrB_Matrix *adj_out) {
 	GrB_Info info;
 	GrB_Matrix adj = NULL;
 

@@ -23,6 +23,8 @@ void print_usage(const char *prog) {
 			"Options:\n"
 			"  -o <path>    Output directory (default: " DEFAULT_OUTPUT_DIR ")\n"
 			"  -q           Quiet mode — suppress pair output\n"
+			"  -valueflow   Enable value-flow specific optimizations and "
+			"constraints (`{s | s = [i ∗ ]i}`)\n"
 			"  -h           Show this help message\n",
 			prog);
 }
@@ -63,6 +65,7 @@ int parse_args(int argc, char *argv[], Args *out) {
 	const char *graph_file_path = NULL;
 	const char *output_path = NULL;
 	int quiet = 0;
+	int valueflow = 0;
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-h") == 0) {
@@ -76,6 +79,8 @@ int parse_args(int argc, char *argv[], Args *out) {
 			output_path = argv[++i];
 		} else if (strcmp(argv[i], "-q") == 0) {
 			quiet = 1;
+		} else if (strcmp(argv[i], "-valueflow") == 0) {
+			valueflow = 1;
 		} else if (graph_file_path == NULL) {
 			graph_file_path = argv[i];
 		} else if (grammar_str == NULL) {
@@ -117,6 +122,7 @@ int parse_args(int argc, char *argv[], Args *out) {
 	out->output_path = output_path;
 	out->grammar_type = grammar_type;
 	out->quiet = quiet;
+	out->valueflow = valueflow;
 	out->on_demand = on_demand;
 	out->parity_d = parity_d;
 	return 1;

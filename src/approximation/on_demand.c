@@ -24,8 +24,8 @@ static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
 static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_approx,
 									   GrB_Matrix over_approx,
 									   MRGrammarType grammar_type,
-									   GrB_Matrix *result, bool filter_empty,
-									   char *msg) {
+									   GrB_Matrix *result, bool valueflow,
+									   bool filter_empty, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
 	MRCache cache = {0};
@@ -102,7 +102,7 @@ static GrB_Info refine_mr_with_grammar(const MRGraph *graph, GrB_Matrix under_ap
 
 			info = mutual_refinement_with_components(
 				components, vertex_maps, comp_count, n_scc, grammar_type, &mr_result,
-				filter_empty, &target_path, &cache);
+				valueflow, filter_empty, &target_path, &cache);
 
 			if (info == GrB_SUCCESS && mr_result != NULL) {
 				bool confirmed = false;
@@ -153,7 +153,7 @@ cleanup_base:
 
 GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 					   GrB_Matrix over_approx, bool parityD, GrB_Matrix *result,
-					   bool filter_empty, char *msg) {
+					   bool valueflow, bool filter_empty, char *msg) {
 	GrB_Info info = GrB_SUCCESS;
 
 	// Step 1: Apply "default" grammar refinement
@@ -172,7 +172,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 
 	GrB_Matrix default_paths = NULL;
 	info = refine_mr_with_grammar(&reduced1, under_approx, over_approx, DEFAULT,
-								  &default_paths, filter_empty, msg);
+								  &default_paths, valueflow, filter_empty, msg);
 	if (info != GrB_SUCCESS) {
 		if (reduced1_owned) {
 			mr_graph_free(&reduced1);
@@ -211,7 +211,7 @@ GrB_Info get_on_demand(const MRGraph *graph, GrB_Matrix under_approx,
 
 	GrB_Matrix final_paths = NULL;
 	info = refine_mr_with_grammar(&reduced2, under_approx, default_paths, ALL,
-								  &final_paths, filter_empty, msg);
+								  &final_paths, valueflow, filter_empty, msg);
 	if (reduced2_owned) {
 		mr_graph_free(&reduced2);
 	}
