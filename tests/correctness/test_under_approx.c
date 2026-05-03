@@ -2,6 +2,7 @@
 
 #include "approximation/approximation.h"
 #include "graph/parse_utils.h"
+#include "graph/valueflow_extensions.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 
@@ -22,8 +23,17 @@ static void run_test_logic(const char *graph_path, bool valueflow,
 	GrB_Info info = parse_graph(graph_path, &graph);
 	assert(info == GrB_SUCCESS);
 
+	MRGraph new_graph = {0};
+	if (valueflow) {
+		info = remove_valueflow_unreachable(&graph, &new_graph, msg);
+		assert(info == GrB_SUCCESS);
+		mr_graph_free(&graph);
+	} else {
+		new_graph = graph;
+	}
+
 	GrB_Matrix result = NULL;
-	info = get_under_approx(&graph, valueflow, &result);
+	info = get_under_approx(&new_graph, valueflow, &result);
 	assert(info == GrB_SUCCESS);
 
 	Pair *actual = NULL;
@@ -36,7 +46,7 @@ static void run_test_logic(const char *graph_path, bool valueflow,
 	free(actual);
 	free(expected);
 	GrB_Matrix_free(&result);
-	mr_graph_free(&graph);
+	mr_graph_free(&new_graph);
 }
 
 int main(void) {
