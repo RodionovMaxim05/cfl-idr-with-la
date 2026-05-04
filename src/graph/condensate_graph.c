@@ -97,9 +97,9 @@ cleanup:
 		for (int64_t t = 0; t < terms_count; t++) {
 			GrB_Matrix_free(&condensed_matrices[t]);
 		}
-		free(condensed_matrices);
+		free((void *)condensed_matrices);
 	}
-	free(adj);
+	free((void *)adj);
 	return info;
 }
 
