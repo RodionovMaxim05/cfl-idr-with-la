@@ -23,7 +23,12 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 	int64_t rules_count = 1 + 5 * n_par + 4 * n_bra + (has_normal ? 2 : 0);
 
-	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	if (!gr.rules) {
+		return gr;
+	}
+
+	LAGraph_rule_WCNF *rules = gr.rules;
 	int64_t r = 0;
 
 	// S -> eps
@@ -81,11 +86,6 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules[r++] = (LAGraph_rule_WCNF){D_i, bra_close, -1, 0};
 	}
 
-	MRGrammar_t gr;
-	gr.rules = rules;
-	gr.rules_count = rules_count;
-	gr.terms_count = terms_count;
-	gr.nonterms_count = nonterms_count;
 	return gr;
 }
 MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
@@ -127,7 +127,12 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 						  2 * n_bra * num_states + 2 * n_bra +
 						  3 * n_par * num_states * num_states + 2 * n_par;
 
-	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	if (!gr.rules) {
+		return gr;
+	}
+
+	LAGraph_rule_WCNF *rules = gr.rules;
 	int64_t r = 0;
 
 // === Nonterminal index helpers ===
@@ -252,11 +257,6 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 #undef TERM_BRA_OPEN
 #undef TERM_BRA_CLOSE
 
-	MRGrammar_t gr;
-	gr.rules = rules;
-	gr.rules_count = rules_count;
-	gr.terms_count = terms_count;
-	gr.nonterms_count = nonterms_count;
 	return gr;
 }
 
@@ -309,7 +309,12 @@ MRGrammar_t dyck_alpha_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 						  2 * n_bra + n_bra * s_count + bra_close_count + 2 * n_par +
 						  3 * par_eg_count;
 
-	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	if (!gr.rules) {
+		return gr;
+	}
+
+	LAGraph_rule_WCNF *rules = gr.rules;
 	int64_t r = 0;
 
 	// === Nonterminal index helpers ===
@@ -457,11 +462,6 @@ MRGrammar_t dyck_alpha_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 #undef TERM_BRA_OPEN
 #undef TERM_BRA_CLOSE
 
-	MRGrammar_t gr;
-	gr.rules = rules;
-	gr.rules_count = rules_count;
-	gr.terms_count = terms_count;
-	gr.nonterms_count = nonterms_count;
 	return gr;
 }
 
