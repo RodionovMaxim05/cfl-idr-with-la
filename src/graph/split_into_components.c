@@ -147,10 +147,10 @@ cleanup:
 		GrB_Matrix_free(&open_bra[i]);
 		GrB_Matrix_free(&close_bra[i]);
 	}
-	free(open_par);
-	free(close_par);
-	free(open_bra);
-	free(close_bra);
+	free((void *)open_par);
+	free((void *)close_par);
+	free((void *)open_bra);
+	free((void *)close_bra);
 	return info;
 }
 
@@ -313,7 +313,7 @@ cleanup:
 		for (GrB_Index i = 0; i < valid_count; i++) {
 			free(vertex_maps[i]);
 		}
-		free(vertex_maps);
+		free((void *)vertex_maps);
 	}
 	return info;
 }
