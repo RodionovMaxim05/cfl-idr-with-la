@@ -80,9 +80,10 @@ static void test_empty_graph(void) {
 	GrB_Matrix op = make_empty_matrix(3);
 	GrB_Matrix cp = make_empty_matrix(3);
 	IdrGraph graph = make_simple_graph(3, op, cp);
+	GrB_Matrix under = make_empty_matrix(3);
 
 	CondensationResult res = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, NULL, &res, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &res, msg);
 	assert(info == GrB_SUCCESS);
 
 	// With an empty under_approx, its own vertex is its own representative
@@ -273,26 +274,77 @@ static void test_edges_between_components_deduplicated(void) {
 }
 
 // Edges between different components are preserved once
-static void test_null_under_approx(void) {
+static void test_edges_between_diff_components_merging(void) {
+	GrB_Matrix op = make_empty_matrix(4);
+	GrB_Matrix cp = make_empty_matrix(4);
+	GrB_Matrix_setElement_BOOL(op, true, 0, 2);
+	GrB_Matrix_setElement_BOOL(op, true, 1, 2);
+	GrB_Matrix_setElement_BOOL(cp, true, 0, 3);
+
+	// Graph: 0->2, 1->2 (open), 0->3 (close)
+	IdrGraph graph = make_simple_graph(4, op, cp);
+
+	// under_approx: 0<->1
+	GrB_Matrix under = make_empty_matrix(4);
+	GrB_Matrix_setElement_BOOL(under, true, 0, 1);
+	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
+
+	CondensationResult cr = {0};
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	assert(info == GrB_SUCCESS);
+
+	GrB_Index rep0 = get_rep(cr.components, 0);
+	GrB_Index rep1 = get_rep(cr.components, 1);
+	GrB_Index rep2 = get_rep(cr.components, 2);
+	GrB_Index rep3 = get_rep(cr.components, 3);
+
+	assert(rep0 == rep1);
+	assert(rep2 != rep0);
+	assert(rep3 != rep0);
+
+	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
+	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep0, rep2));
+	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep0, rep3));
+
+	condensation_result_free(&cr, msg);
+	free_simple_graph_arrays(&graph);
+	GrB_Matrix_free(&op);
+	GrB_Matrix_free(&cp);
+}
+
+// Merge two vertices with one between them
+static void test_condensate_multiple_vertices(void) {
 	GrB_Matrix op = make_empty_matrix(3);
 	GrB_Matrix cp = make_empty_matrix(3);
 	GrB_Matrix_setElement_BOOL(op, true, 0, 1);
 	GrB_Matrix_setElement_BOOL(cp, true, 1, 2);
+	GrB_Matrix_setElement_BOOL(op, true, 1, 0);
+	GrB_Matrix_setElement_BOOL(cp, true, 2, 1);
 
-	// Graph: 0->1, 1->2 (open)
+	// Graph: 0->1, 1->0 (open), 1->2, 2->1 (close)
 	IdrGraph graph = make_simple_graph(3, op, cp);
 
+	// under_approx: 0<->2
+	GrB_Matrix under = make_empty_matrix(3);
+	GrB_Matrix_setElement_BOOL(under, true, 0, 2);
+	GrB_Matrix_setElement_BOOL(under, true, 2, 0);
+
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, NULL, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
 	assert(info == GrB_SUCCESS);
 
-	assert(get_rep(cr.components, 0) == 0);
-	assert(get_rep(cr.components, 1) == 1);
-	assert(get_rep(cr.components, 2) == 2);
+	GrB_Index rep0 = get_rep(cr.components, 0);
+	GrB_Index rep1 = get_rep(cr.components, 1);
+	GrB_Index rep2 = get_rep(cr.components, 2);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
-	assert(matrix_has_edge(cr.condensed_graph.open_par[0], 0, 1));
-	assert(matrix_has_edge(cr.condensed_graph.close_par[0], 1, 2));
+	assert(rep0 == rep2);
+	assert(rep0 != rep1);
+
+	assert(idr_graph_nvals(&cr.condensed_graph) == 4);
+	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep0, rep1));
+	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep0, rep1));
+	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep1, rep0));
+	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep1, rep0));
 
 	condensation_result_free(&cr, msg);
 	free_simple_graph_arrays(&graph);
@@ -309,7 +361,8 @@ int main(void) {
 	test_three_vertices_all_merged();
 	test_partial_mutual_paths();
 	test_edges_between_components_deduplicated();
-	test_null_under_approx();
+	test_edges_between_diff_components_merging();
+	test_condensate_multiple_vertices();
 
 	LAGraph_Finalize(msg);
 	return 0;
