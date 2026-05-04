@@ -24,7 +24,12 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 	int64_t rules_count = 1 + 5 * n_par + 5 * n_bra + (has_normal ? 2 : 0);
 
-	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	if (!gr.rules) {
+		return gr;
+	}
+
+	LAGraph_rule_WCNF *rules = gr.rules;
 	int64_t r = 0;
 
 	// S -> eps
@@ -86,11 +91,6 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules[r++] = (LAGraph_rule_WCNF){D_i, bra_close, -1, 0};
 	}
 
-	MRGrammar_t gr;
-	gr.rules = rules;
-	gr.rules_count = rules_count;
-	gr.terms_count = terms_count;
-	gr.nonterms_count = nonterms_count;
 	return gr;
 }
 
@@ -109,7 +109,12 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 	// AnyClose -> close_j (par + bra):  n_par + n_bra
 	int64_t rules_count = 4 + (has_normal ? 2 : 0) + 2 * (n_par + n_bra);
 
-	LAGraph_rule_WCNF *rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	if (!gr.rules) {
+		return gr;
+	}
+
+	LAGraph_rule_WCNF *rules = gr.rules;
 	int64_t r = 0;
 
 	int32_t NT_E = 1;
@@ -154,15 +159,13 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 #undef TERM_BRA_OPEN
 #undef TERM_BRA_CLOSE
 
-	MRGrammar_t gr;
-	gr.rules = rules;
-	gr.rules_count = rules_count;
-	gr.terms_count = terms_count;
-	gr.nonterms_count = nonterms_count;
 	return gr;
 }
 
 void grammar_free(MRGrammar_t *gr) {
+	if (!gr) {
+		return;
+	}
 	free(gr->rules);
 	gr->rules = NULL;
 	gr->rules_count = 0;
