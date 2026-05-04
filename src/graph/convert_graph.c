@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "internal/grb_utils.h"
 #include "uthash.h"
 
 #define ID_MAX_LEN 256
@@ -32,14 +33,15 @@ GrB_Info build_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 		return GrB_INVALID_VALUE;
 	}
 
+	GrB_Info info = GrB_SUCCESS;
 	BracketEntry *par_map = NULL;
 	BracketEntry *bra_map = NULL;
 	bool has_normal = false;
 	GrB_Matrix normal_mat = NULL;
 
 	for (size_t i = 0; i < gm->count; i++) {
-		MatrixSymbolInfo info = gm->matrix_symbols[i];
-		const char *label = symbol_list_get_str(symbol_list, info.symbol_index);
+		MatrixSymbolInfo msi = gm->matrix_symbols[i];
+		const char *label = symbol_list_get_str(symbol_list, msi.symbol_index);
 		BracketType type = fmt->get_type(label);
 
 		if (type == BRACKET_TYPE_UNKNOWN) {
@@ -51,13 +53,13 @@ GrB_Info build_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 		}
 
 		GrB_Index nvals = 0;
-		GrB_Matrix_nvals(&nvals, gm->matrices[i]);
+		GRB_TRY(GrB_Matrix_nvals(&nvals, gm->matrices[i]));
 		if (nvals == 0) {
 			continue;
 		}
 
 		char id[ID_MAX_LEN];
-		snprintf(id, sizeof(id), "%zu", info.block_index);
+		snprintf(id, sizeof(id), "%zu", msi.block_index);
 
 		BracketEntry **map =
 			(type == BRACKET_TYPE_PARENTHESES) ? &par_map : &bra_map;
@@ -94,12 +96,18 @@ GrB_Info build_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 	out->n = n;
 	out->n_par = valid_par;
 	out->n_bra = valid_bra;
+	out->normal = NULL;
 
 	out->open_par = valid_par ? malloc(valid_par * sizeof(GrB_Matrix)) : NULL;
 	out->close_par = valid_par ? malloc(valid_par * sizeof(GrB_Matrix)) : NULL;
 	out->open_bra = valid_bra ? malloc(valid_bra * sizeof(GrB_Matrix)) : NULL;
 	out->close_bra = valid_bra ? malloc(valid_bra * sizeof(GrB_Matrix)) : NULL;
-	out->normal = NULL;
+
+	if ((valid_par && (!out->open_par || !out->close_par)) ||
+		(valid_bra && (!out->open_bra || !out->close_bra))) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
 
 	HASH_ITER(hh, par_map, e, tmp) {
 		if (e->has_open && e->has_close) {
@@ -118,8 +126,16 @@ GrB_Info build_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 		out->normal = normal_mat;
 	}
 
+cleanup:
 	hashmap_free(&par_map);
 	hashmap_free(&bra_map);
-
-	return GrB_SUCCESS;
+	if (info < GrB_SUCCESS) {
+		free(out->open_par);
+		free(out->close_par);
+		free(out->open_bra);
+		free(out->close_bra);
+		out->open_par = out->close_par = NULL;
+		out->open_bra = out->close_bra = NULL;
+	}
+	return info;
 }
