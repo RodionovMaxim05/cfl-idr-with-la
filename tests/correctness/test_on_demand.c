@@ -23,7 +23,7 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 
 	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = idr_remove_valueflow_unreachable(&graph, &new_graph);
+		info = idr_remove_valueflow_unreachable(&new_graph, &graph);
 		assert(info == GrB_SUCCESS);
 		idr_graph_free(&graph);
 	} else {
@@ -31,7 +31,7 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 	}
 
 	GrB_Matrix under_approx = NULL;
-	info = idr_get_under_approx(&new_graph, valueflow, &under_approx);
+	info = idr_get_under_approx(&under_approx, &new_graph, valueflow);
 	assert(info == GrB_SUCCESS);
 
 	IdrGrammarType grammar_type;
@@ -42,13 +42,13 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 	}
 
 	GrB_Matrix over_approx = NULL;
-	info = idr_get_over_approx(&new_graph, grammar_type, NULL, &over_approx,
+	info = idr_get_over_approx(&over_approx, &new_graph, grammar_type, NULL,
 							   valueflow, true);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Matrix result = NULL;
-	info = idr_get_on_demand(&new_graph, under_approx, over_approx, parity_d,
-							 &result, valueflow, true);
+	info = idr_get_on_demand(&result, &new_graph, under_approx, over_approx,
+							 parity_d, valueflow, true);
 	assert(info == GrB_SUCCESS);
 
 	Pair *actual = NULL;

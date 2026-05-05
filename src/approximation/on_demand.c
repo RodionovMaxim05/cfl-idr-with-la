@@ -175,9 +175,9 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_get_on_demand(const IdrGraph *graph, GrB_Matrix under_approx,
-						   GrB_Matrix over_approx, bool parityD, GrB_Matrix *result,
-						   bool valueflow, bool filter_empty) {
+GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
+						   GrB_Matrix under_approx, GrB_Matrix over_approx,
+						   bool parity_d, bool valueflow, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 
 	IdrGraph reduced1 = {0};
@@ -199,7 +199,7 @@ GrB_Info idr_get_on_demand(const IdrGraph *graph, GrB_Matrix under_approx,
 	GRB_TRY(refine_mr_with_grammar(&reduced1, under_approx, over_approx, IDR_DEFAULT,
 								   &default_paths, valueflow, filter_empty));
 
-	if (parityD) {
+	if (parity_d) {
 		*result = default_paths;
 		default_paths = NULL;
 		goto cleanup;

@@ -85,8 +85,8 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_get_under_approx(const IdrGraph *graph, bool valueflow,
-							  GrB_Matrix *result) {
+GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
+							  bool valueflow) {
 	GrB_Info info = GrB_SUCCESS;
 
 	IdrGraph *components = NULL;
@@ -117,8 +117,8 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_get_over_approx(const IdrGraph *graph, IdrGrammarType grammar_type,
-							 GrB_Matrix under_approx, GrB_Matrix *result,
+GrB_Info idr_get_over_approx(GrB_Matrix *result, const IdrGraph *graph,
+							 IdrGrammarType grammar_type, GrB_Matrix under_approx,
 							 bool valueflow, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 
