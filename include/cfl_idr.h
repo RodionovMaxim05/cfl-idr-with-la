@@ -50,7 +50,7 @@ typedef enum {
  *
  * @param[in] g  Graph whose matrices are to be freed.
  */
-void idr_graph_free(const IdrGraph *g);
+void idr_graph_free(IdrGraph *g);
 
 /**
  * @brief Computes an under-approximation f reachable paths in a graph using Dyck

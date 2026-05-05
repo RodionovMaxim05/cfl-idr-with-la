@@ -14,7 +14,7 @@
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
-static bool matrix_has_path_udt(GrB_Matrix m, TargetPath *target_path) {
+static bool matrix_has_path_udt(GrB_Matrix m, const TargetPath *target_path) {
 	AllPathsElem val = {0};
 	GrB_Info info =
 		GrB_Matrix_extractElement_UDT(&val, m, target_path->src, target_path->tgt);
@@ -108,8 +108,8 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 	GRB_TRY(extract_non_trivial_paths(paths[0], out_reachability));
 
-	mr_cache_insert(cache, key, grammar_tag, *out_reachability, paths,
-					grammar.nonterms_count, all_paths_t);
+	mr_cache_insert(cache, key, grammar_tag, paths, grammar.nonterms_count,
+					all_paths_t);
 
 	if (target_path) {
 		*target_found = matrix_has_path_udt(paths[0], target_path);
@@ -131,7 +131,6 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 								  bool filter_empty, const TargetPath *target_path,
 								  MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
-	char msg[LAGRAPH_MSG_LEN];
 	bool has_normal = (graph->normal != NULL);
 	bool target_found = false;
 
@@ -380,7 +379,8 @@ mutual_refinement_with_components(IdrGraph *components, GrB_Index **vertex_maps,
 					local_tgt = i;
 				}
 			}
-			if (local_src == GrB_INVALID_VALUE || local_tgt == GrB_INVALID_VALUE) {
+			if (local_src == (GrB_Index)GrB_INVALID_VALUE ||
+				local_tgt == (GrB_Index)GrB_INVALID_VALUE) {
 				continue;
 			}
 

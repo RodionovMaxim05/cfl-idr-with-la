@@ -218,7 +218,7 @@ bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n) {
 GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
 						 IdrGraph *out) {
 	GrB_Info info = GrB_SUCCESS;
-	char msg[LAGRAPH_MSG_LEN];
+
 	SccResult sr = {0};
 	GrB_Matrix S = NULL;
 	GrB_Matrix allowed_scc = NULL;
