@@ -34,6 +34,7 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	GrB_Matrix scc_selector = NULL;
 	GrB_Matrix keep_mask = NULL;
 	GrB_Matrix adj = NULL;
+	GrB_Matrix tmp_m = NULL;
 	SccResult scc = {0};
 
 	GRB_TRY(build_adjacency(graph, &adj));
@@ -91,7 +92,6 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	GRB_TRY(GrB_mxv(v_keep, v_tmp, GrB_LAND, GrB_LOR_LAND_SEMIRING_BOOL,
 					scc_selector, can_reach_sink, NULL));
 
-	GRB_TRY(GrB_Matrix_new(&keep_mask, GrB_BOOL, n, n));
 	GRB_TRY(GrB_Matrix_diag(&keep_mask, v_keep, 0));
 
 	out->n = n;
@@ -115,14 +115,13 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 #define FILTER(field, out_field)                                                    \
 	do {                                                                            \
 		if (field) {                                                                \
-			GrB_Matrix tmp_m = NULL;                                                \
+			GrB_Matrix_free(&tmp_m);                                                \
 			GRB_TRY(GrB_Matrix_new(&(out_field), GrB_BOOL, n, n));                  \
 			GRB_TRY(GrB_Matrix_new(&tmp_m, GrB_BOOL, n, n));                        \
 			GRB_TRY(GrB_mxm(tmp_m, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL,          \
 							keep_mask, field, NULL));                               \
 			GRB_TRY(GrB_mxm(out_field, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL,      \
 							tmp_m, keep_mask, NULL));                               \
-			GrB_Matrix_free(&tmp_m);                                                \
 		} else {                                                                    \
 			(out_field) = NULL;                                                     \
 		}                                                                           \
@@ -153,6 +152,7 @@ cleanup:
 	GrB_Matrix_free(&keep_mask);
 	GrB_Matrix_free(&adj);
 	scc_result_free(&scc);
+	GrB_Matrix_free(&tmp_m);
 
 	return info;
 }
