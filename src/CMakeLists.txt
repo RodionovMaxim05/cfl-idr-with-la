@@ -20,7 +20,7 @@ add_library(cfl_lib STATIC
 
 set_target_properties(cfl_lib PROPERTIES OUTPUT_NAME "cfl-idr-with-la")
 
-target_compile_options(cfl_lib PRIVATE -Wall -Wextra -Wpedantic) # -Werror)
+target_compile_options(cfl_lib PRIVATE -Wall -Wextra -Wpedantic)
 
 target_include_directories(cfl_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

@@ -113,8 +113,8 @@ const MRStepResult *mr_cache_lookup(const MRCache *c, uint64_t graph_key,
 }
 
 GrB_Info mr_cache_insert(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
-						 GrB_Matrix reachability, GrB_Matrix *paths_matrices,
-						 int64_t nonterms_count, GrB_Type all_paths_t) {
+						 GrB_Matrix *paths_matrices, int64_t nonterms_count,
+						 GrB_Type all_paths_t) {
 	if (!c) {
 		return GrB_SUCCESS;
 	}

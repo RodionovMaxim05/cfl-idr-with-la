@@ -2,7 +2,7 @@
 
 #include "internal/grb_utils.h"
 
-void idr_graph_free(const IdrGraph *g) {
+void idr_graph_free(IdrGraph *g) {
 	if (!g) {
 		return;
 	}
@@ -75,13 +75,12 @@ GrB_Index idr_graph_count_edges(const IdrGraph *graph) {
 	return total;
 }
 
-#define PAIR_NONEMPTY(open, close)                                                  \
-	({                                                                              \
-		GrB_Index _o = 0, _c = 0;                                                   \
-		GrB_Matrix_nvals(&_o, (open));                                              \
-		GrB_Matrix_nvals(&_c, (close));                                             \
-		_o > 0 && _c > 0;                                                           \
-	})
+static inline bool pair_nonempty(GrB_Matrix open, GrB_Matrix close) {
+	GrB_Index o = 0, c = 0;
+	GrB_Matrix_nvals(&o, open);
+	GrB_Matrix_nvals(&c, close);
+	return o > 0 && c > 0;
+}
 
 GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_par,
 						 int64_t n_bra, bool has_normal, GrB_Index n,
@@ -110,12 +109,12 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 		// Build with empty pair filtering
 
 		for (int64_t i = 0; i < n_par; i++) {
-			if (PAIR_NONEMPTY(result_matrices[2 * i], result_matrices[2 * i + 1])) {
+			if (pair_nonempty(result_matrices[2 * i], result_matrices[2 * i + 1])) {
 				actual_n_par++;
 			}
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
-			if (PAIR_NONEMPTY(result_matrices[bra_base + 2 * i],
+			if (pair_nonempty(result_matrices[bra_base + 2 * i],
 							  result_matrices[bra_base + 2 * i + 1])) {
 				actual_n_bra++;
 			}
@@ -157,7 +156,7 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 
 		int64_t p_idx = 0, b_idx = 0;
 		for (int64_t i = 0; i < n_par; i++) {
-			if (PAIR_NONEMPTY(result_matrices[2 * i], result_matrices[2 * i + 1])) {
+			if (pair_nonempty(result_matrices[2 * i], result_matrices[2 * i + 1])) {
 				out->open_par[p_idx] = result_matrices[2 * i];
 				out->close_par[p_idx] = result_matrices[2 * i + 1];
 				p_idx++;
@@ -167,7 +166,7 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 			}
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
-			if (PAIR_NONEMPTY(result_matrices[bra_base + 2 * i],
+			if (pair_nonempty(result_matrices[bra_base + 2 * i],
 							  result_matrices[bra_base + 2 * i + 1])) {
 				out->open_bra[b_idx] = result_matrices[bra_base + 2 * i];
 				out->close_bra[b_idx] = result_matrices[bra_base + 2 * i + 1];
@@ -193,8 +192,6 @@ cleanup:
 	out->open_bra = out->close_bra = NULL;
 	return info;
 }
-
-#undef PAIR_NONEMPTY
 
 GrB_Info idr_graph_get_adj_matrices(const IdrGraph *graph, GrB_Matrix **out) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);

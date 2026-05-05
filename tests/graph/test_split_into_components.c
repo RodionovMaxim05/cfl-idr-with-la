@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "approximation/idr_graph.h"
 #include "cfl_idr.h"
 #include "graph/split_into_components.h"
 
