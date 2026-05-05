@@ -21,7 +21,7 @@ static void run_test_logic(const char *graph_path, bool valueflow,
 
 	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = idr_remove_valueflow_unreachable(&graph, &new_graph, msg);
+		info = idr_remove_valueflow_unreachable(&graph, &new_graph);
 		assert(info == GrB_SUCCESS);
 		idr_graph_free(&graph);
 	} else {

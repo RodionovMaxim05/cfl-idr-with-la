@@ -45,8 +45,7 @@ cleanup:
 }
 
 static GrB_Info extract_component_IdrGraph(IdrGraph *graph, GrB_Index *verts,
-										   GrB_Index verts_count, IdrGraph *out,
-										   char *msg) {
+										   GrB_Index verts_count, IdrGraph *out) {
 	GrB_Info info = GrB_SUCCESS;
 
 	out->n = verts_count;
@@ -156,8 +155,9 @@ cleanup:
 
 GrB_Info split_IdrGraph_into_components(IdrGraph *graph, IdrGraph **out_components,
 										GrB_Index ***out_vertex_maps,
-										GrB_Index *out_count, char *msg) {
+										GrB_Index *out_count) {
 	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
 	GrB_Index n = graph->n;
 
 	GrB_Matrix A = NULL;
@@ -247,7 +247,7 @@ GrB_Info split_IdrGraph_into_components(IdrGraph *graph, IdrGraph **out_componen
 			}
 
 			GrB_Info extract_info = extract_component_IdrGraph(
-				graph, verts, count, &components[valid_count], msg);
+				graph, verts, count, &components[valid_count]);
 			if (extract_info < GrB_SUCCESS) {
 				free(verts);
 				info = extract_info;

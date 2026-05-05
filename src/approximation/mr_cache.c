@@ -26,6 +26,7 @@ static uint64_t fnv1a_feed_matrix(uint64_t hash, GrB_Matrix m, const char *tag,
 								  int64_t idx) {
 	hash = fnv1a_update(hash, tag, strlen(tag));
 	hash = fnv1a_update(hash, &idx, sizeof(idx));
+
 	if (m == NULL) {
 		return hash;
 	}
@@ -40,10 +41,7 @@ static uint64_t fnv1a_feed_matrix(uint64_t hash, GrB_Matrix m, const char *tag,
 	GrB_Index *cols = malloc(nvals * sizeof(GrB_Index));
 	uint64_t *pairs = malloc(nvals * sizeof(uint64_t));
 	if (!rows || !cols || !pairs) {
-		free(rows);
-		free(cols);
-		free(pairs);
-		return hash;
+		goto cleanup;
 	}
 
 	GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nvals, m);
@@ -53,6 +51,7 @@ static uint64_t fnv1a_feed_matrix(uint64_t hash, GrB_Matrix m, const char *tag,
 	qsort(pairs, nvals, sizeof(uint64_t), cmp_u64);
 	hash = fnv1a_update(hash, pairs, nvals * sizeof(uint64_t));
 
+cleanup:
 	free(rows);
 	free(cols);
 	free(pairs);
@@ -79,13 +78,12 @@ uint64_t get_graph_cache_hash(const IdrGraph *graph) {
 
 void mr_cache_init(MRCache *c) { memset(c, 0, sizeof(*c)); }
 
-static void free_cached_paths(MRStepResult *p) {
-	if (!p || !p->matrices) {
+static void free_step_result(MRStepResult *r) {
+	if (!r || !r->matrices)
 		return;
-	}
-	LAGraph_CFL_AllPaths_free_outputs(p->matrices, p->count, &p->all_paths_t);
-	GrB_free(&p->all_paths_t);
-	memset(p, 0, sizeof(*p));
+	LAGraph_CFL_AllPaths_free_outputs(r->matrices, r->count, &r->all_paths_t);
+	GrB_free(&r->all_paths_t);
+	memset(r, 0, sizeof(*r));
 }
 
 void mr_cache_free(MRCache *c) {
@@ -93,7 +91,7 @@ void mr_cache_free(MRCache *c) {
 		return;
 	}
 	for (size_t i = 0; i < c->count; i++) {
-		free_cached_paths(&c->entries[i].value);
+		free_step_result(&c->entries[i].value);
 	}
 	free(c->entries);
 	memset(c, 0, sizeof(*c));
@@ -124,7 +122,6 @@ GrB_Info mr_cache_insert(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
 		size_t new_cap = c->capacity ? c->capacity * 2 : 8;
 		MRCacheEntry *tmp_buf = realloc(c->entries, new_cap * sizeof(MRCacheEntry));
 		if (!tmp_buf) {
-			free(c->entries);
 			return GrB_OUT_OF_MEMORY;
 		}
 		c->entries = tmp_buf;
@@ -134,7 +131,6 @@ GrB_Info mr_cache_insert(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
 	MRCacheEntry *e = &c->entries[c->count++];
 	e->graph_key = graph_key;
 	e->grammar_tag = grammar_tag;
-
 	e->value.matrices = paths_matrices;
 	e->value.count = nonterms_count;
 	e->value.all_paths_t = all_paths_t;

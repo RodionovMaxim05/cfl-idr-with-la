@@ -24,22 +24,6 @@ static IdrGraph init_graph(GrB_Index n) {
 	return g;
 }
 
-static GrB_Index count_edges(const IdrGraph *g) {
-	GrB_Index nvals = 0;
-	GrB_Index total = 0;
-	if (g->normal) {
-		GrB_Matrix_nvals(&nvals, g->normal);
-		total += nvals;
-	}
-	for (int i = 0; i < g->n_bra; i++) {
-		GrB_Matrix_nvals(&nvals, g->open_bra[i]);
-		total += nvals;
-		GrB_Matrix_nvals(&nvals, g->close_bra[i]);
-		total += nvals;
-	}
-	return total;
-}
-
 // Tests
 
 static void test_no_ob_or_cb_removes_all(void) {
@@ -48,9 +32,9 @@ static void test_no_ob_or_cb_removes_all(void) {
 	GrB_Matrix_setElement_BOOL(g.normal, true, 0, 1); // Edge A->B
 
 	IdrGraph out = {0};
-	idr_remove_valueflow_unreachable(&g, &out, msg);
+	idr_remove_valueflow_unreachable(&g, &out);
 
-	assert(count_edges(&out) == 0);
+	assert(idr_graph_count_edges(&out) == 0);
 
 	idr_graph_free(&g);
 	idr_graph_free(&out);
@@ -65,9 +49,9 @@ static void test_simple_path_preserved(void) {
 	GrB_Matrix_setElement_BOOL(g.close_bra[0], true, 2, 2);
 
 	IdrGraph out = {0};
-	idr_remove_valueflow_unreachable(&g, &out, msg);
+	idr_remove_valueflow_unreachable(&g, &out);
 
-	assert(count_edges(&out) == 3);
+	assert(idr_graph_count_edges(&out) == 3);
 
 	idr_graph_free(&g);
 	idr_graph_free(&out);
@@ -81,9 +65,9 @@ static void test_reachable_but_no_cb_removed(void) {
 	GrB_Matrix_setElement_BOOL(g.normal, true, 1, 2);
 
 	IdrGraph out = {0};
-	idr_remove_valueflow_unreachable(&g, &out, msg);
+	idr_remove_valueflow_unreachable(&g, &out);
 
-	assert(count_edges(&out) == 0);
+	assert(idr_graph_count_edges(&out) == 0);
 
 	idr_graph_free(&g);
 	idr_graph_free(&out);
@@ -99,9 +83,9 @@ static void test_cycle_preserved(void) {
 	GrB_Matrix_setElement_BOOL(g.close_bra[0], true, 2, 2);
 
 	IdrGraph out = {0};
-	idr_remove_valueflow_unreachable(&g, &out, msg);
+	idr_remove_valueflow_unreachable(&g, &out);
 
-	assert(count_edges(&out) == 4);
+	assert(idr_graph_count_edges(&out) == 4);
 
 	idr_graph_free(&g);
 	idr_graph_free(&out);
@@ -116,9 +100,9 @@ static void test_invalid_cb_to_ob_path(void) {
 	GrB_Matrix_setElement_BOOL(g.open_bra[0], true, 2, 3);
 
 	IdrGraph out = {0};
-	idr_remove_valueflow_unreachable(&g, &out, msg);
+	idr_remove_valueflow_unreachable(&g, &out);
 
-	assert(count_edges(&out) == 0);
+	assert(idr_graph_count_edges(&out) == 0);
 
 	idr_graph_free(&g);
 	idr_graph_free(&out);

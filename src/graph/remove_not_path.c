@@ -39,9 +39,9 @@ cleanup:
 	return info;
 }
 
-GrB_Info compute_sccs(const IdrGraph *graph, GrB_Matrix adj, SccResult *out,
-					  char *msg) {
+GrB_Info compute_sccs(const IdrGraph *graph, GrB_Matrix adj, SccResult *out) {
 	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
 	GrB_Vector scc_vec = NULL;
 	GrB_Matrix reach = NULL;
 	GrB_Matrix next = NULL;
@@ -216,8 +216,9 @@ bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n) {
 }
 
 GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
-						 IdrGraph *out, char *msg) {
+						 IdrGraph *out) {
 	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
 	SccResult sr = {0};
 	GrB_Matrix S = NULL;
 	GrB_Matrix allowed_scc = NULL;
@@ -240,7 +241,7 @@ GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
 	GRB_TRY(build_adjacency(graph, &adj));
 
 	// Calculating SCC
-	GRB_TRY(compute_sccs(graph, adj, &sr, msg));
+	GRB_TRY(compute_sccs(graph, adj, &sr));
 	GrB_Index n_scc = sr.n_scc;
 
 	// Build selection matrix S (n × n_scc): S[i][sr.scc_ids[i]] = true

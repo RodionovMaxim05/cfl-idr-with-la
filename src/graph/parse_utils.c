@@ -19,8 +19,8 @@ GrB_Info parse_graph(const char *filename, IdrGraph *out) {
 	GraphMatrices gm = get_grb_matrices_from_graph(graph, &symbol_list);
 	free(graph.edges);
 
-	GrB_Info info = build_idr_graph(&gm, &symbol_list, graph.node_count,
-									&DefaultTerminalFormat, out);
+	GrB_Info info = get_idr_graph(&gm, &symbol_list, graph.node_count,
+								  &DefaultTerminalFormat, out);
 
 	free(gm.matrix_symbols);
 	symbol_list_free(&symbol_list);

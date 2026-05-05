@@ -27,8 +27,8 @@ static void hashmap_free(BracketEntry **map) {
 	}
 }
 
-GrB_Info build_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
-						 GrB_Index n, const TerminalFormat *fmt, IdrGraph *out) {
+GrB_Info get_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
+					   GrB_Index n, const TerminalFormat *fmt, IdrGraph *out) {
 	if (!gm || !symbol_list || !fmt || !out) {
 		return GrB_INVALID_VALUE;
 	}
