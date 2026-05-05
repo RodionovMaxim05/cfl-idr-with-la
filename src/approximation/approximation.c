@@ -1,120 +1,119 @@
-#include "approximation.h"
-
+#include <GraphBLAS.h>
 #include <LAGraph.h>
 #include <LAGraphX.h>
 
+#include "cfl_idr.h"
 #include "grammar/grammar.h"
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "graph/valueflow_extensions.h"
+#include "idr_graph.h"
+#include "internal/grb_utils.h"
 #include "mr_cache.h"
+#include "mutual_refinement.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
-GrB_Matrix *assemble_adj_matrices(const IdrGraph *graph) {
-	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
-	GrB_Matrix *adj = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
+static GrB_Info process_under_approx_component(IdrGraph *comp, GrB_Index *vmap,
+											   GrB_Matrix result, bool valueflow) {
+	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
 
-	for (int64_t i = 0; i < graph->n_par; i++) {
-		adj[2 * i] = graph->open_par[i];
-		adj[2 * i + 1] = graph->close_par[i];
-	}
-	for (int64_t i = 0; i < graph->n_bra; i++) {
-		adj[2 * graph->n_par + 2 * i] = graph->open_bra[i];
-		adj[2 * graph->n_par + 2 * i + 1] = graph->close_bra[i];
-	}
-	if (graph->normal != NULL) {
-		adj[2 * graph->n_par + 2 * graph->n_bra] = graph->normal;
+	GrB_Type all_paths_t = NULL;
+	GrB_Matrix *paths = NULL;
+	GrB_Matrix *adj_matrices = NULL;
+	GrB_Matrix comp_result = NULL;
+	GrB_Index *rows = NULL;
+	GrB_Index *cols = NULL;
+	MRGrammar_t grammar = {0};
+
+	grammar = dyck_grammar(comp->n_par, comp->n_bra, comp->normal != NULL);
+	if (!grammar.rules) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
 	}
 
-	return adj;
+	GRB_TRY(idr_graph_get_adj_matrices(comp, &adj_matrices));
+
+	paths = calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
+	if (!paths) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
+
+	GRB_TRY(LAGraph_CFL_AllPaths(paths, &all_paths_t, adj_matrices,
+								 grammar.terms_count, grammar.nonterms_count,
+								 grammar.rules, grammar.rules_count, msg, 0));
+
+	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
+	GRB_TRY(extract_non_trivial_paths(paths[0], &comp_result));
+
+	if (valueflow) {
+		GRB_TRY(apply_valueflow_under_approx(paths, adj_matrices, grammar, comp,
+											 &comp_result));
+	}
+
+	GrB_Index nnz = 0;
+	GRB_TRY(GrB_Matrix_nvals(&nnz, comp_result));
+
+	if (nnz > 0) {
+		rows = malloc(nnz * sizeof(GrB_Index));
+		cols = malloc(nnz * sizeof(GrB_Index));
+		if (!rows || !cols) {
+			info = GrB_OUT_OF_MEMORY;
+			goto cleanup;
+		}
+
+		GRB_TRY(GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result));
+
+		for (GrB_Index k = 0; k < nnz; k++) {
+			GRB_TRY(GrB_Matrix_setElement_BOOL(result, true, vmap[rows[k]],
+											   vmap[cols[k]]));
+		}
+	}
+
+cleanup:
+	free(rows);
+	free(cols);
+	GrB_Matrix_free(&comp_result);
+	LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count, &all_paths_t);
+	GrB_free(&all_paths_t);
+	grammar_free(&grammar);
+	free(adj_matrices);
+	return info;
 }
 
 GrB_Info idr_get_under_approx(const IdrGraph *graph, bool valueflow,
 							  GrB_Matrix *result) {
-	char msg[LAGRAPH_MSG_LEN];
 	GrB_Info info = GrB_SUCCESS;
-
-	GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n);
 
 	IdrGraph *components = NULL;
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
-	info = split_IdrGraph_into_components(graph, &components, &vertex_maps,
-										  &comp_count, msg);
-	if (info != GrB_SUCCESS) {
-		return info;
-	}
+	GrB_Index *rows = NULL;
+	GrB_Index *cols = NULL;
+
+	GRB_TRY(GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n));
+	GRB_TRY(split_IdrGraph_into_components(graph, &components, &vertex_maps,
+										   &comp_count));
 
 	for (GrB_Index c = 0; c < comp_count; c++) {
-		IdrGraph *comp = &components[c];
-		GrB_Index *vmap = vertex_maps[c];
-
-		MRGrammar_t grammar =
-			dyck_grammar(comp->n_par, comp->n_bra, comp->normal != NULL);
-		GrB_Matrix *adj_matrices = assemble_adj_matrices(comp);
-
-		GrB_Type all_paths_t = NULL;
-		GrB_Matrix *paths = NULL;
-		LAGraph_Calloc((void **)&paths, grammar.nonterms_count, sizeof(GrB_Matrix),
-					   msg);
-
-		info = LAGraph_CFL_AllPaths(paths, &all_paths_t, adj_matrices,
-									grammar.terms_count, grammar.nonterms_count,
-									grammar.rules, grammar.rules_count, msg, 0);
-		if (info != GrB_SUCCESS) {
-			goto cleanup_comp;
-		}
-
-		GrB_Matrix comp_result = NULL;
-		GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n);
-		extractNonTrivialPaths(paths[0], comp, &comp_result);
-
-		if (valueflow) {
-			info = apply_valueflow_under_approx(paths, adj_matrices, grammar, comp,
-												&comp_result, msg);
-			if (info != GrB_SUCCESS) {
-				goto cleanup_comp;
-			}
-		}
-
-		GrB_Index nnz = 0;
-		GrB_Matrix_nvals(&nnz, comp_result);
-
-		if (nnz > 0) {
-			GrB_Index *rows = malloc(nnz * sizeof(GrB_Index));
-			GrB_Index *cols = malloc(nnz * sizeof(GrB_Index));
-
-			GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result);
-
-			for (GrB_Index k = 0; k < nnz; k++) {
-				GrB_Matrix_setElement_BOOL(*result, true, vmap[rows[k]],
-										   vmap[cols[k]]);
-			}
-
-			free(rows);
-			free(cols);
-		}
-		GrB_Matrix_free(&comp_result);
-
-	cleanup_comp:
-		LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count,
-										  &all_paths_t);
-		GrB_free(&all_paths_t);
-		grammar_free(&grammar);
-		free((void *)adj_matrices);
-		idr_graph_free(comp);
-		free(vmap);
-
+		info = process_under_approx_component(&components[c], vertex_maps[c],
+											  *result, valueflow);
+		idr_graph_free(&components[c]);
+		free(vertex_maps[c]);
 		if (info != GrB_SUCCESS) {
 			break;
 		}
 	}
 
-	free((void *)components);
-	free((void *)vertex_maps);
+cleanup:
+	free(rows);
+	free(cols);
+	free(components);
+	free(vertex_maps);
 	return info;
 }
 
@@ -122,36 +121,30 @@ GrB_Info idr_get_over_approx(const IdrGraph *graph, IdrGrammarType grammar_type,
 							 GrB_Matrix under_approx, GrB_Matrix *result,
 							 bool valueflow, bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
-	char msg[LAGRAPH_MSG_LEN];
 
 	MRCache cache = {0};
 	mr_cache_init(&cache);
 
-	if (under_approx == NULL) {
-		return mutual_refinement(graph, grammar_type, result, valueflow,
-								 filter_empty, &cache);
-	}
-
 	CondensationResult cr = {0};
-
-	// Collapse mutually reachable vertices
-	info = condensate_from_under_approx(graph, under_approx, &cr, msg);
-	if (info != GrB_SUCCESS) {
-		return info;
-	}
-
 	GrB_Matrix mr_result = NULL;
-	info = mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
-							 valueflow, filter_empty, &cache);
-	if (info != GrB_SUCCESS) {
+
+	if (under_approx == NULL) {
+		GRB_TRY(mutual_refinement(graph, grammar_type, result, valueflow,
+								  filter_empty, &cache));
 		goto cleanup;
 	}
 
-	info = expand_result(mr_result, cr.components, graph->n, result, msg);
+	// Collapse mutually reachable vertices
+	GRB_TRY(condensate_from_under_approx(graph, under_approx, &cr));
+
+	GRB_TRY(mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
+							  valueflow, filter_empty, &cache));
+
+	GRB_TRY(expand_result(mr_result, cr.components, graph->n, result));
 
 cleanup:
 	GrB_Matrix_free(&mr_result);
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	mr_cache_free(&cache);
 	return info;
 }

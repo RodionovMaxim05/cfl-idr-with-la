@@ -3,13 +3,14 @@
 #include <LAGraph.h>
 #include <LAGraphX.h>
 
-#include "approximation/approximation.h"
+#include "approximation/idr_graph.h"
 #include "approximation/mutual_refinement.h"
 #include "internal/grb_utils.h"
 
 GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_approx,
-									  CondensationResult *out, char *msg) {
+									  CondensationResult *out) {
 	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
 
 	GrB_Vector components = NULL;
 	GrB_Matrix under_T = NULL;
@@ -51,10 +52,7 @@ GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_ap
 		goto cleanup;
 	}
 
-	adj = assemble_adj_matrices(graph);
-	if (!adj) {
-		goto cleanup;
-	}
+	GRB_TRY(idr_graph_get_adj_matrices(graph, &adj));
 
 	for (int64_t t = 0; t < terms_count; t++) {
 		GrB_Matrix tmp = NULL;
@@ -78,8 +76,8 @@ GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_ap
 	free((void *)adj);
 	adj = NULL;
 
-	build_refined_graph(&out->condensed_graph, condensed_matrices, graph->n_par,
-						graph->n_bra, graph->normal != NULL, graph->n, true);
+	build_idr_graph(&out->condensed_graph, condensed_matrices, graph->n_par,
+					graph->n_bra, graph->normal != NULL, graph->n, true);
 	out->components = components;
 	components = NULL;
 	condensed_matrices = NULL;
@@ -103,13 +101,13 @@ cleanup:
 	return info;
 }
 
-void condensation_result_free(CondensationResult *cr, char *msg) {
-	free_refined_graph(&cr->condensed_graph);
+void condensation_result_free(CondensationResult *cr) {
+	idr_graph_free(&cr->condensed_graph);
 	GrB_Vector_free(&cr->components);
 }
 
 GrB_Info expand_result(GrB_Matrix mr_result, GrB_Vector components, GrB_Index n,
-					   GrB_Matrix *result, char *msg) {
+					   GrB_Matrix *result) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Matrix P = NULL;

@@ -4,5 +4,4 @@
 
 #include "cfl_idr.h"
 
-void extractNonTrivialPaths(GrB_Matrix paths, const IdrGraph *graph,
-							GrB_Matrix *result);
+GrB_Info extract_non_trivial_paths(GrB_Matrix paths, GrB_Matrix *result);

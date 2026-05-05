@@ -24,8 +24,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out,
-										  char *msg) {
+GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Vector v_has_open = NULL, v_has_close = NULL;
@@ -38,7 +37,7 @@ GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out,
 	SccResult scc = {0};
 
 	GRB_TRY(build_adjacency(graph, &adj));
-	GRB_TRY(compute_sccs(graph, adj, &scc, msg));
+	GRB_TRY(compute_sccs(graph, adj, &scc));
 	GrB_Index n_scc = scc.n_scc;
 	GrB_Index n = graph->n;
 
@@ -159,7 +158,7 @@ cleanup:
 }
 
 GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
-							  GrB_Matrix *filtered_out, char *msg) {
+							  GrB_Matrix *filtered_out) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Matrix scc_selector = NULL;
@@ -172,7 +171,7 @@ GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
 	GrB_Index n = graph->n;
 
 	GRB_TRY(build_adjacency(graph, &adj));
-	GRB_TRY(compute_sccs(graph, adj, &scc, msg));
+	GRB_TRY(compute_sccs(graph, adj, &scc));
 	GrB_Index n_scc = scc.n_scc;
 
 	// Expanding SCC reachability to all nodes

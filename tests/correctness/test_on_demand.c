@@ -23,7 +23,7 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 
 	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = idr_remove_valueflow_unreachable(&graph, &new_graph, msg);
+		info = idr_remove_valueflow_unreachable(&graph, &new_graph);
 		assert(info == GrB_SUCCESS);
 		idr_graph_free(&graph);
 	} else {
@@ -48,7 +48,7 @@ static void run_test_logic(const char *graph_path, bool parity_d, bool valueflow
 
 	GrB_Matrix result = NULL;
 	info = idr_get_on_demand(&new_graph, under_approx, over_approx, parity_d,
-							 &result, valueflow, true, msg);
+							 &result, valueflow, true);
 	assert(info == GrB_SUCCESS);
 
 	Pair *actual = NULL;

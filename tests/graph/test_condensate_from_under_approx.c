@@ -24,27 +24,6 @@ static bool matrix_has_edge(GrB_Matrix m, GrB_Index i, GrB_Index j) {
 	return info == GrB_SUCCESS && val;
 }
 
-static GrB_Index matrix_nvals(GrB_Matrix m) {
-	GrB_Index nvals = 0;
-	GrB_Matrix_nvals(&nvals, m);
-	return nvals;
-}
-
-static GrB_Index idr_graph_nvals(const IdrGraph *g) {
-	GrB_Index total = 0;
-	for (int64_t i = 0; i < g->n_par; i++) {
-		total += matrix_nvals(g->open_par[i]);
-		total += matrix_nvals(g->close_par[i]);
-	}
-	for (int64_t i = 0; i < g->n_bra; i++) {
-		total += matrix_nvals(g->open_bra[i]);
-		total += matrix_nvals(g->close_bra[i]);
-	}
-	if (g->normal != NULL)
-		total += matrix_nvals(g->normal);
-	return total;
-}
-
 static GrB_Index get_rep(GrB_Vector components, GrB_Index i) {
 	uint64_t rep = 0;
 	GrB_Vector_extractElement_UINT64(&rep, components, i);
@@ -83,7 +62,7 @@ static void test_empty_graph(void) {
 	GrB_Matrix under = make_empty_matrix(3);
 
 	CondensationResult res = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &res, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &res);
 	assert(info == GrB_SUCCESS);
 
 	// With an empty under_approx, its own vertex is its own representative
@@ -91,9 +70,9 @@ static void test_empty_graph(void) {
 	assert(get_rep(res.components, 1) == 1);
 	assert(get_rep(res.components, 2) == 2);
 
-	assert(idr_graph_nvals(&res.condensed_graph) == 0);
+	assert(idr_graph_count_edges(&res.condensed_graph) == 0);
 
-	condensation_result_free(&res, msg);
+	condensation_result_free(&res);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -115,16 +94,16 @@ static void test_mutual_paths_cause_merging(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
 	GrB_Index rep1 = get_rep(cr.components, 1);
 	assert(rep0 == rep1);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 2);
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -146,7 +125,7 @@ static void test_one_way_path_no_merge(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 0, 1);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -155,7 +134,7 @@ static void test_one_way_path_no_merge(void) {
 
 	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep0, rep1));
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -182,7 +161,7 @@ static void test_three_vertices_all_merged(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 2, 1);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -191,9 +170,9 @@ static void test_three_vertices_all_merged(void) {
 	assert(rep0 == rep1);
 	assert(rep1 == rep2);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 2);
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -218,7 +197,7 @@ static void test_partial_mutual_paths(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 2);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -227,9 +206,9 @@ static void test_partial_mutual_paths(void) {
 	assert(rep0 == rep1);
 	assert(rep1 != rep2);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 3);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 3);
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -253,7 +232,7 @@ static void test_edges_between_components_deduplicated(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -264,9 +243,9 @@ static void test_edges_between_components_deduplicated(void) {
 	assert(rep0 != rep2);
 	assert(rep0 != rep3);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 2);
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -290,7 +269,7 @@ static void test_edges_between_diff_components_merging(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -302,11 +281,11 @@ static void test_edges_between_diff_components_merging(void) {
 	assert(rep2 != rep0);
 	assert(rep3 != rep0);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 2);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 2);
 	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep0, rep2));
 	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep0, rep3));
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);
@@ -330,7 +309,7 @@ static void test_condensate_multiple_vertices(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 2, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr, msg);
+	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -340,13 +319,13 @@ static void test_condensate_multiple_vertices(void) {
 	assert(rep0 == rep2);
 	assert(rep0 != rep1);
 
-	assert(idr_graph_nvals(&cr.condensed_graph) == 4);
+	assert(idr_graph_count_edges(&cr.condensed_graph) == 4);
 	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep0, rep1));
 	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep0, rep1));
 	assert(matrix_has_edge(cr.condensed_graph.open_par[0], rep1, rep0));
 	assert(matrix_has_edge(cr.condensed_graph.close_par[0], rep1, rep0));
 
-	condensation_result_free(&cr, msg);
+	condensation_result_free(&cr);
 	free_simple_graph_arrays(&graph);
 	GrB_Matrix_free(&op);
 	GrB_Matrix_free(&cp);

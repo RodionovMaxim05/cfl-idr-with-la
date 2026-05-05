@@ -23,21 +23,6 @@ static GrB_Index matrix_nvals(GrB_Matrix m) {
 	return nvals;
 }
 
-static GrB_Index idr_graph_nvals(const IdrGraph *g) {
-	GrB_Index total = 0;
-	for (int64_t i = 0; i < g->n_par; i++) {
-		total += matrix_nvals(g->open_par[i]);
-		total += matrix_nvals(g->close_par[i]);
-	}
-	for (int64_t i = 0; i < g->n_bra; i++) {
-		total += matrix_nvals(g->open_bra[i]);
-		total += matrix_nvals(g->close_bra[i]);
-	}
-	if (g->normal != NULL)
-		total += matrix_nvals(g->normal);
-	return total;
-}
-
 static bool matrix_has_edge(GrB_Matrix m, GrB_Index i, GrB_Index j) {
 	bool val = false;
 	GrB_Info info = GrB_Matrix_extractElement_BOOL(&val, m, i, j);
@@ -109,8 +94,8 @@ static void test_empty_graph(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 0);
 
@@ -132,8 +117,8 @@ static void test_single_edge_one_component(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 1);
 	assert(components[0].n == 2);
@@ -158,8 +143,8 @@ static void test_two_disconnected_edges_two_components(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 2);
 	for (GrB_Index c = 0; c < count; c++)
@@ -185,8 +170,8 @@ static void test_directed_cycle_one_component(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 1);
 	assert(components[0].n == 3);
@@ -212,8 +197,8 @@ static void test_two_separate_cycles_two_components(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 2);
 	for (GrB_Index c = 0; c < count; c++)
@@ -237,8 +222,8 @@ static void test_self_loop_one_component(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 0);
 
@@ -260,8 +245,8 @@ static void test_isolated_vertex_plus_connected_pair(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 1);
 
@@ -294,8 +279,8 @@ static void test_complex_graph_three_components(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 2);
 
@@ -304,7 +289,7 @@ static void test_complex_graph_three_components(void) {
 
 	for (GrB_Index c = 0; c < count; c++) {
 		GrB_Index n = components[c].n;
-		GrB_Index e = idr_graph_nvals(&components[c]);
+		GrB_Index e = idr_graph_count_edges(&components[c]);
 		if (n == 3 && e == 3)
 			comp_size3_edges3 = c;
 		else if (n == 3 && e == 2)
@@ -334,8 +319,8 @@ static void test_components_preserve_edges(void) {
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index count = 0;
 
-	GrB_Info info = split_IdrGraph_into_components(&graph, &components, &vertex_maps,
-												   &count, msg);
+	GrB_Info info =
+		split_IdrGraph_into_components(&graph, &components, &vertex_maps, &count);
 	assert(info == GrB_SUCCESS);
 	assert(count == 1);
 	assert(components[0].n == 3);

@@ -17,8 +17,6 @@ typedef struct {
 
 void idr_graph_free(const IdrGraph *g);
 
-void idr_graph_print(const IdrGraph *g);
-
 typedef enum {
 	IDR_UNKNOWN = -1,
 	IDR_DEFAULT,
@@ -38,9 +36,8 @@ GrB_Info idr_get_over_approx(const IdrGraph *graph, IdrGrammarType grammar_type,
 							 GrB_Matrix *result, bool valueflow,
 							 bool filter_empty); // whether to filter out empty paths
 
-GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out,
-										  char *msg);
+GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out);
 
 GrB_Info idr_get_on_demand(const IdrGraph *graph, GrB_Matrix under_approx,
 						   GrB_Matrix over_approx, bool parityD, GrB_Matrix *result,
-						   bool valueflow, bool filter_empty, char *msg);
+						   bool valueflow, bool filter_empty);

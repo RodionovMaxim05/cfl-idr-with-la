@@ -4,18 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "internal/grb_utils.h"
 #include "uthash.h"
-
-typedef struct {
-	GrB_Index i;
-	GrB_Index j;
-	int32_t A;
-} VisitedKey;
-
-typedef struct {
-	VisitedKey key;
-	UT_hash_handle hh;
-} VisitedEntry;
 
 typedef struct {
 	GrB_Index row_idx;
@@ -39,7 +29,7 @@ static bool stack_push(Stack *s, GrB_Index i, GrB_Index j, int32_t A) {
 	if (s->top == s->capacity) {
 		int64_t new_cap = s->capacity == 0 ? 64 : s->capacity * 2;
 		StackElem *tmp = realloc(s->elems, (size_t)new_cap * sizeof(StackElem));
-		if (tmp == NULL) {
+		if (!tmp) {
 			return false;
 		}
 		s->elems = tmp;
@@ -52,6 +42,17 @@ static bool stack_push(Stack *s, GrB_Index i, GrB_Index j, int32_t A) {
 static StackElem stack_pop(Stack *s) { return s->elems[--s->top]; }
 
 static bool stack_empty(Stack *s) { return s->top == 0; }
+
+typedef struct {
+	GrB_Index i;
+	GrB_Index j;
+	int32_t A;
+} VisitedKey;
+
+typedef struct {
+	VisitedKey key;
+	UT_hash_handle hh;
+} VisitedEntry;
 
 typedef struct {
 	int32_t term; // terminal index (prod_A of the rule)
@@ -98,10 +99,16 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	for (int32_t a = 0; a < g->nonterms_count; a++) {
 		if (idx[a].term_count) {
 			idx[a].term_rules = malloc((size_t)idx[a].term_count * sizeof(TermRule));
+			if (!idx[a].term_rules) {
+				goto oom;
+			}
 		}
 		if (idx[a].binary_count) {
 			idx[a].binary_rules =
 				malloc((size_t)idx[a].binary_count * sizeof(BinaryRule));
+			if (!idx[a].binary_rules) {
+				goto oom;
+			}
 		}
 		// Reset - reuse as write cursor
 		idx[a].term_count = 0;
@@ -127,6 +134,14 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	}
 
 	return idx;
+
+oom:
+	for (int32_t a = 0; a < g->nonterms_count; a++) {
+		free(idx[a].term_rules);
+		free(idx[a].binary_rules);
+	}
+	free(idx);
+	return NULL;
 }
 
 static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
@@ -140,32 +155,38 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	free(idx);
 }
 
-GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
-								 MRGrammar_t grammar, GrB_Index n,
-								 TargetPath *target_path,
-								 GrB_Matrix *result_matrices, char *msg) {
+GrB_Info extract_edges_from_outputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
+									MRGrammar_t grammar, GrB_Index n,
+									TargetPath *target_path,
+									GrB_Matrix *result_matrices) {
 	GrB_Info info = GrB_SUCCESS;
+
+	NontermRules *grammar_idx = NULL;
+	VisitedEntry *visited_ht = NULL; // visited - hash table
+	Stack stack = stack_new();
+	GrB_Index *rows = NULL;
+	GrB_Index *cols = NULL;
+	void *values = NULL;
 
 	// Initialize result_matrices
 	for (int64_t t = 0; t < grammar.terms_count; t++) {
-		GrB_Matrix_new(&result_matrices[t], GrB_BOOL, n, n);
+		GRB_TRY(GrB_Matrix_new(&result_matrices[t], GrB_BOOL, n, n));
 	}
 
 	// Build grammar index
-	NontermRules *grammar_idx = build_grammar_index(&grammar);
+	grammar_idx = build_grammar_index(&grammar);
 	if (!grammar_idx) {
 		return GrB_OUT_OF_MEMORY;
 	}
-
-	// visited - hash table
-	VisitedEntry *visited_hash = NULL;
-	Stack stack = stack_new();
 
 	// Stack initialization
 	if (target_path != NULL) {
 		// On-demand analysis
 
-		stack_push(&stack, target_path->src, target_path->tgt, NT_START);
+		if (!stack_push(&stack, target_path->src, target_path->tgt, NT_START)) {
+			info = GrB_OUT_OF_MEMORY;
+			goto cleanup;
+		}
 	} else {
 		// Default: all pairs from paths[NT_START]
 
@@ -175,24 +196,31 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 			goto cleanup;
 		}
 
-		GrB_Index *rows = NULL;
-		GrB_Index *cols = NULL;
-		void *val_void = NULL;
-		LAGraph_Malloc((void **)&rows, nnz, sizeof(GrB_Index), msg);
-		LAGraph_Malloc((void **)&cols, nnz, sizeof(GrB_Index), msg);
-		LAGraph_Malloc(&val_void, nnz, sizeof(AllPathsElem), msg);
+		rows = malloc(nnz * sizeof(GrB_Index));
+		cols = malloc(nnz * sizeof(GrB_Index));
+		values = malloc(nnz * sizeof(AllPathsElem));
+		if (!rows || !cols || !values) {
+			info = GrB_OUT_OF_MEMORY;
+			goto cleanup;
+		}
 
-		GrB_Matrix_extractTuples(rows, cols, val_void, &nnz, paths[NT_START]);
+		GRB_TRY(GrB_Matrix_extractTuples(rows, cols, values, &nnz, paths[NT_START]));
 
 		for (GrB_Index k = 0; k < nnz; k++) {
 			if (rows[k] != cols[k]) {
-				stack_push(&stack, rows[k], cols[k], NT_START);
+				if (!stack_push(&stack, rows[k], cols[k], NT_START)) {
+					info = GrB_OUT_OF_MEMORY;
+					goto cleanup;
+				}
 			}
 		}
 
-		LAGraph_Free((void **)&rows, msg);
-		LAGraph_Free((void **)&cols, msg);
-		LAGraph_Free(&val_void, msg);
+		free((void *)rows);
+		free((void *)cols);
+		free(values);
+		rows = NULL;
+		cols = NULL;
+		values = NULL;
 	}
 
 	// Main DFS loop
@@ -205,16 +233,19 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 		// Hash table search
 		VisitedKey lk = {.i = i, .j = j, .A = A};
 		VisitedEntry *found;
-		HASH_FIND(hh, visited_hash, &lk, sizeof(VisitedKey), found);
-
+		HASH_FIND(hh, visited_ht, &lk, sizeof(VisitedKey), found);
 		if (found) {
 			continue;
 		}
 
 		// Add to the hash table
 		VisitedEntry *new_entry = malloc(sizeof(VisitedEntry));
+		if (!new_entry) {
+			info = GrB_OUT_OF_MEMORY;
+			goto cleanup;
+		}
 		new_entry->key = lk;
-		HASH_ADD(hh, visited_hash, key, sizeof(VisitedKey), new_entry);
+		HASH_ADD(hh, visited_ht, key, sizeof(VisitedKey), new_entry);
 
 		AllPathsElem elem;
 		if (GrB_Matrix_extractElement_UDT(&elem, paths[A], i, j) == GrB_NO_VALUE) {
@@ -237,8 +268,8 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 					GrB_Matrix_extractElement_BOOL(&has_edge, adj_matrices[term], i,
 												   j);
 					if (has_edge) {
-						GrB_Matrix_setElement_BOOL(result_matrices[term], true, i,
-												   j);
+						GRB_TRY(GrB_Matrix_setElement_BOOL(result_matrices[term],
+														   true, i, j));
 					}
 				}
 			} else {
@@ -263,14 +294,20 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 					VisitedKey lkB = {i, mid, B};
 					VisitedKey lkC = {mid, j, C};
 					VisitedEntry *fB, *fC;
-					HASH_FIND(hh, visited_hash, &lkB, sizeof(VisitedKey), fB);
-					HASH_FIND(hh, visited_hash, &lkC, sizeof(VisitedKey), fC);
+					HASH_FIND(hh, visited_ht, &lkB, sizeof(VisitedKey), fB);
+					HASH_FIND(hh, visited_ht, &lkC, sizeof(VisitedKey), fC);
 
 					if (!fB) {
-						stack_push(&stack, i, mid, B);
+						if (!stack_push(&stack, i, mid, B)) {
+							info = GrB_OUT_OF_MEMORY;
+							goto cleanup;
+						}
 					}
 					if (!fC) {
-						stack_push(&stack, mid, j, C);
+						if (!stack_push(&stack, mid, j, C)) {
+							info = GrB_OUT_OF_MEMORY;
+							goto cleanup;
+						}
 					}
 				}
 			}
@@ -278,12 +315,15 @@ GrB_Info extractEdgesFromOutputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 	}
 
 cleanup:
+	free(rows);
+	free(cols);
+	free(values);
 	VisitedEntry *curr_entry, *tmp_entry;
-	HASH_ITER(hh, visited_hash, curr_entry, tmp_entry) {
-		HASH_DEL(visited_hash, curr_entry);
+	HASH_ITER(hh, visited_ht, curr_entry, tmp_entry) {
+		HASH_DEL(visited_ht, curr_entry);
 		free(curr_entry);
 	}
 	free_grammar_index(grammar_idx, grammar.nonterms_count);
 	stack_free(&stack);
-	return GrB_SUCCESS;
+	return info;
 }
