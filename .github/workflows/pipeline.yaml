@@ -54,10 +54,10 @@ jobs:
         run: make LAGRAPH_DIR=~/lagraph
 
       - name: Check Code Formatting
-        run: make format
+        run: make format LAGRAPH_DIR=~/lagraph
 
       - name: Run Static Analysis
-        run: make lint
+        run: make lint LAGRAPH_DIR=~/lagraph
 
       - name: Test
         run: make test LAGRAPH_DIR=~/lagraph
