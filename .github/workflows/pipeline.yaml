@@ -5,6 +5,8 @@ on: [ push, pull_request, workflow_dispatch ]
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      LAGRAPH_DIR: ~/lagraph
     steps:
       - uses: actions/checkout@v6
         with:
@@ -24,13 +26,14 @@ jobs:
         with:
           path: ~/graphblas
           key: graphblas-${{ runner.os }}-v1
+          save-always: true
 
       - name: Build & Install GraphBLAS
         if: steps.cache-graphblas.outputs.cache-hit != 'true'
         run: |
           git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git ~/graphblas
           cd ~/graphblas
-          make
+          make compact
 
       - name: Install GraphBLAS
         run: |
@@ -51,13 +54,13 @@ jobs:
           https://github.com/SparseLinearAlgebra/LAGraph.git ~/lagraph
 
       - name: Build
-        run: make LAGRAPH_DIR=~/lagraph
+        run: make
 
       - name: Check Code Formatting
-        run: make format LAGRAPH_DIR=~/lagraph
+        run: make format
 
-      - name: Run Static Analysis
-        run: make lint LAGRAPH_DIR=~/lagraph
+      - name: Run Linter
+        run: make lint
 
       - name: Test
-        run: make test LAGRAPH_DIR=~/lagraph
+        run: make test
