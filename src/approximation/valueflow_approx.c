@@ -51,7 +51,7 @@ GrB_Info apply_valueflow_over_approx(const IdrGraph *graph, GrB_Matrix *beta_rea
 	*beta_reach = filtered_paths;
 	filtered_paths = NULL;
 
-	GRB_TRY(idr_remove_valueflow_unreachable(graph, filtered_graph));
+	GRB_TRY(idr_remove_valueflow_unreachable(filtered_graph, graph));
 
 cleanup:
 	GrB_Matrix_free(&filtered_paths);

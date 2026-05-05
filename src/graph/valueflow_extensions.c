@@ -24,7 +24,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_remove_valueflow_unreachable(const IdrGraph *graph, IdrGraph *out) {
+GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Vector v_has_open = NULL, v_has_close = NULL;

@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (args.valueflow) {
-		info = idr_remove_valueflow_unreachable(&parsed_graph, &working_graph);
+		info = idr_remove_valueflow_unreachable(&working_graph, &parsed_graph);
 		if (info != GrB_SUCCESS) {
 			fprintf(stderr, "Error: valueflow filtering failed: %d\n", info);
 			exit_code = EXIT_FAILURE;
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Under approximation
-	info = idr_get_under_approx(&working_graph, args.valueflow, &under_result);
+	info = idr_get_under_approx(&under_result, &working_graph, args.valueflow);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error: under-approximation failed: %d\n", info);
 		exit_code = EXIT_FAILURE;
@@ -61,8 +61,8 @@ int main(int argc, char *argv[]) {
 	GrB_Matrix_nvals(&under_nvals, under_result);
 
 	// Over approximation
-	info = idr_get_over_approx(&working_graph, args.grammar_type, under_result,
-							   &over_result, args.valueflow, true);
+	info = idr_get_over_approx(&over_result, &working_graph, args.grammar_type,
+							   under_result, args.valueflow, true);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error: over-approximation failed: %d\n", info);
 		exit_code = EXIT_FAILURE;
@@ -94,8 +94,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	// On-demand refinement
-	info = idr_get_on_demand(&working_graph, under_result, over_result,
-							 args.parity_d, &on_demand_result, args.valueflow, true);
+	info = idr_get_on_demand(&on_demand_result, &working_graph, under_result,
+							 over_result, args.parity_d, args.valueflow, true);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error: on-demand refinement failed: %d\n", info);
 		exit_code = EXIT_FAILURE;

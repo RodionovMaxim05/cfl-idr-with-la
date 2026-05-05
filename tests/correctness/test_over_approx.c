@@ -23,7 +23,7 @@ static void run_test_logic(const char *graph_path, IdrGrammarType grammar_type,
 
 	IdrGraph new_graph = {0};
 	if (valueflow) {
-		info = idr_remove_valueflow_unreachable(&graph, &new_graph);
+		info = idr_remove_valueflow_unreachable(&new_graph, &graph);
 		assert(info == GrB_SUCCESS);
 		idr_graph_free(&graph);
 	} else {
@@ -31,7 +31,7 @@ static void run_test_logic(const char *graph_path, IdrGrammarType grammar_type,
 	}
 
 	GrB_Matrix result = NULL;
-	info = idr_get_over_approx(&new_graph, grammar_type, NULL, &result, valueflow,
+	info = idr_get_over_approx(&result, &new_graph, grammar_type, NULL, valueflow,
 							   true);
 	assert(info == GrB_SUCCESS);
 
