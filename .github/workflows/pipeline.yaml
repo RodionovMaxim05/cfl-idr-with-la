@@ -45,7 +45,8 @@ jobs:
       - name: Clone LAGraph
         if: steps.cache-lagraph.outputs.cache-hit != 'true'
         run: |
-          git clone --depth=1 https://github.com/SparseLinearAlgebra/LAGraph/tree/homka122/all_algorithms_benchmark ~/lagraph
+          git clone --depth=1 --branch homka122/all_algorithms_benchmark \
+          https://github.com/SparseLinearAlgebra/LAGraph.git ~/lagraph
 
       - name: Build
         run: make LAGRAPH_DIR=~/lagraph
