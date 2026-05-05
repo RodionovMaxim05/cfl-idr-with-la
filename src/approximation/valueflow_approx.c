@@ -25,7 +25,6 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *paths, GrB_Matrix *adj_matrice
 	GRB_TRY(build_idr_graph(&updated_graph, out_edges, comp->n_par, comp->n_bra,
 							comp->normal != NULL, comp->n, false));
 
-	GRB_TRY(GrB_Matrix_new(&filtered, GrB_BOOL, comp->n, comp->n));
 	GRB_TRY(filter_bracket_paths(&updated_graph, *comp_result, &filtered));
 
 	GrB_Matrix_free(comp_result);
@@ -35,25 +34,22 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *paths, GrB_Matrix *adj_matrice
 cleanup:
 	free((void *)out_edges);
 	idr_graph_free(&updated_graph);
-	GrB_Matrix_free(&filtered);
 	return info;
 }
 
-GrB_Info apply_valueflow_over_approx(const IdrGraph *graph, GrB_Matrix *beta_reach,
+GrB_Info apply_valueflow_over_approx(const IdrGraph *graph, GrB_Matrix *reach,
 									 IdrGraph *filtered_graph) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Matrix filtered_paths = NULL;
 
-	GRB_TRY(GrB_Matrix_new(&filtered_paths, GrB_BOOL, graph->n, graph->n));
-	GRB_TRY(filter_bracket_paths(graph, *beta_reach, &filtered_paths));
+	GRB_TRY(filter_bracket_paths(graph, *reach, &filtered_paths));
 
-	GrB_Matrix_free(beta_reach);
-	*beta_reach = filtered_paths;
+	GrB_Matrix_free(reach);
+	*reach = filtered_paths;
 	filtered_paths = NULL;
 
 	GRB_TRY(idr_remove_valueflow_unreachable(filtered_graph, graph));
 
 cleanup:
-	GrB_Matrix_free(&filtered_paths);
 	return info;
 }

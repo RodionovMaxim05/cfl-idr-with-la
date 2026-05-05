@@ -161,6 +161,9 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 				out->open_par[p_idx] = result_matrices[2 * i];
 				out->close_par[p_idx] = result_matrices[2 * i + 1];
 				p_idx++;
+			} else {
+				GrB_Matrix_free(&result_matrices[2 * i]);
+				GrB_Matrix_free(&result_matrices[2 * i + 1]);
 			}
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
@@ -169,6 +172,9 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 				out->open_bra[b_idx] = result_matrices[bra_base + 2 * i];
 				out->close_bra[b_idx] = result_matrices[bra_base + 2 * i + 1];
 				b_idx++;
+			} else {
+				GrB_Matrix_free(&result_matrices[bra_base + 2 * i]);
+				GrB_Matrix_free(&result_matrices[bra_base + 2 * i + 1]);
 			}
 		}
 	}

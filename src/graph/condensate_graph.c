@@ -80,6 +80,7 @@ GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_ap
 					graph->n_bra, graph->normal != NULL, graph->n, true);
 	out->components = components;
 	components = NULL;
+	free(condensed_matrices);
 	condensed_matrices = NULL;
 
 cleanup:

@@ -23,12 +23,20 @@ static void hashmap_free(BracketEntry **map) {
 	BracketEntry *entry, *tmp;
 	HASH_ITER(hh, *map, entry, tmp) {
 		HASH_DEL(*map, entry);
+		if (!entry->has_open || !entry->has_close) {
+			if (entry->has_open) {
+				GrB_Matrix_free(&entry->open_mat);
+			}
+			if (entry->has_close) {
+				GrB_Matrix_free(&entry->close_mat);
+			}
+		}
 		free(entry);
 	}
 }
 
-GrB_Info get_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
-					   GrB_Index n, const TerminalFormat *fmt, IdrGraph *out) {
+GrB_Info get_idr_graph(GraphMatrices *gm, const SymbolList *symbol_list, GrB_Index n,
+					   const TerminalFormat *fmt, IdrGraph *out) {
 	if (!gm || !symbol_list || !fmt || !out) {
 		return GrB_INVALID_VALUE;
 	}
@@ -48,6 +56,7 @@ GrB_Info get_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 			if (strcmp(label, "normal") == 0) {
 				has_normal = true;
 				normal_mat = gm->matrices[i];
+				gm->matrices[i] = NULL;
 			}
 			continue;
 		}
@@ -74,9 +83,11 @@ GrB_Info get_idr_graph(const GraphMatrices *gm, const SymbolList *symbol_list,
 		if (fmt->is_open(label)) {
 			entry->has_open = true;
 			entry->open_mat = gm->matrices[i];
+			gm->matrices[i] = NULL;
 		} else {
 			entry->has_close = true;
 			entry->close_mat = gm->matrices[i];
+			gm->matrices[i] = NULL;
 		}
 	}
 

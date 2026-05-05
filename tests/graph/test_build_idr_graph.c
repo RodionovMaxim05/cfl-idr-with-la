@@ -136,8 +136,6 @@ static void test_single_parenthesis_pair(void) {
 	assert(out.n_par == 1);
 	assert(out.n_bra == 0);
 	assert(out.normal == NULL);
-	assert(out.open_par[0] == ms.gm.matrices[0]);
-	assert(out.close_par[0] == ms.gm.matrices[1]);
 	assert(out.open_bra == NULL);
 	assert(out.close_bra == NULL);
 	assert(matrix_has_edge(out.open_par[0], 0, 1));
@@ -167,8 +165,6 @@ static void test_single_bracket_pair(void) {
 	assert(out.normal == NULL);
 	assert(out.open_par == NULL);
 	assert(out.close_par == NULL);
-	assert(out.open_bra[0] == ms.gm.matrices[0]);
-	assert(out.close_bra[0] == ms.gm.matrices[1]);
 	assert(matrix_has_edge(out.open_bra[0], 0, 2));
 	assert(matrix_has_edge(out.close_bra[0], 2, 0));
 
@@ -236,7 +232,6 @@ static void test_normal_matrix(void) {
 	assert(out.close_par == NULL);
 	assert(out.open_bra == NULL);
 	assert(out.close_bra == NULL);
-	assert(out.normal == ms.gm.matrices[0]);
 	assert(matrix_has_edge(out.normal, 0, 2));
 
 	free_idr_graph_arrays(&out);
@@ -311,7 +306,6 @@ static void test_mixed_all_types(void) {
 
 	assert(out.n_par == 1);
 	assert(out.n_bra == 1);
-	assert(out.normal == ms.gm.matrices[4]);
 	assert(matrix_has_edge(out.open_par[0], 0, 1));
 	assert(matrix_has_edge(out.close_par[0], 1, 0));
 	assert(matrix_has_edge(out.open_bra[0], 0, 2));
