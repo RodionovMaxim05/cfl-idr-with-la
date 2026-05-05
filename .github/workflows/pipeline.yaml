@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LAGRAPH_DIR: ~/lagraph
+      GRAPHBLAS_USE_JIT: 0
     steps:
       - uses: actions/checkout@v6
         with:
@@ -18,7 +19,7 @@ jobs:
           sudo apt-get install -y \
             clang-format clang-tidy \
             cmake build-essential \
-            libgomp1 libgomp-plugin-nvptx1
+            libgomp1 libomp-dev
 
       - name: Cache GraphBLAS
         id: cache-graphblas
@@ -26,7 +27,6 @@ jobs:
         with:
           path: ~/graphblas
           key: graphblas-${{ runner.os }}-v1
-          save-always: true
 
       - name: Build & Install GraphBLAS
         if: steps.cache-graphblas.outputs.cache-hit != 'true'
