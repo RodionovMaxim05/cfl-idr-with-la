@@ -115,15 +115,17 @@ int main(int argc, char *argv[]) {
 	printf("On-demand refinement completed. Results written to %s\n", output_file);
 
 cleanup:
-	if (out)
+	if (out) {
 		fclose(out);
+	}
 	GrB_Matrix_free(&under_result);
 	GrB_Matrix_free(&over_result);
 	GrB_Matrix_free(&on_demand_result);
-	if (working_graph_owned)
+	if (working_graph_owned) {
 		idr_graph_free(&working_graph);
-	else
+	} else {
 		idr_graph_free(&parsed_graph);
+	}
 	LAGraph_Finalize(msg);
 	return exit_code;
 }

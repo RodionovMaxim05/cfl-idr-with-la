@@ -92,7 +92,7 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		goto cleanup;
 	}
 
-	paths = calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
+	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
 	if (!paths) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;

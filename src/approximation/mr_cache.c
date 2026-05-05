@@ -79,8 +79,9 @@ uint64_t get_graph_cache_hash(const IdrGraph *graph) {
 void mr_cache_init(MRCache *c) { memset(c, 0, sizeof(*c)); }
 
 static void free_step_result(MRStepResult *r) {
-	if (!r || !r->matrices)
+	if (!r || !r->matrices) {
 		return;
+	}
 	LAGraph_CFL_AllPaths_free_outputs(r->matrices, r->count, &r->all_paths_t);
 	GrB_free(&r->all_paths_t);
 	memset(r, 0, sizeof(*r));
