@@ -122,10 +122,18 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 		}
 	}
 
-	out->open_par = actual_n_par ? malloc(actual_n_par * sizeof(GrB_Matrix)) : NULL;
-	out->close_par = actual_n_par ? malloc(actual_n_par * sizeof(GrB_Matrix)) : NULL;
-	out->open_bra = actual_n_bra ? malloc(actual_n_bra * sizeof(GrB_Matrix)) : NULL;
-	out->close_bra = actual_n_bra ? malloc(actual_n_bra * sizeof(GrB_Matrix)) : NULL;
+	out->open_par = actual_n_par
+						? (GrB_Matrix *)malloc(actual_n_par * sizeof(GrB_Matrix))
+						: NULL;
+	out->close_par = actual_n_par
+						 ? (GrB_Matrix *)malloc(actual_n_par * sizeof(GrB_Matrix))
+						 : NULL;
+	out->open_bra = actual_n_bra
+						? (GrB_Matrix *)malloc(actual_n_bra * sizeof(GrB_Matrix))
+						: NULL;
+	out->close_bra = actual_n_bra
+						 ? (GrB_Matrix *)malloc(actual_n_bra * sizeof(GrB_Matrix))
+						 : NULL;
 
 	if ((actual_n_par && (!out->open_par || !out->close_par)) ||
 		(actual_n_bra && (!out->open_bra || !out->close_bra))) {
@@ -171,10 +179,10 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *result_matrices, int64_t n_p
 	return info;
 
 cleanup:
-	free(out->open_par);
-	free(out->close_par);
-	free(out->open_bra);
-	free(out->close_bra);
+	free((void *)out->open_par);
+	free((void *)out->close_par);
+	free((void *)out->open_bra);
+	free((void *)out->close_bra);
 	out->open_par = out->close_par = NULL;
 	out->open_bra = out->close_bra = NULL;
 	return info;

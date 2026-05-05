@@ -37,7 +37,7 @@ static GrB_Info process_under_approx_component(IdrGraph *comp, GrB_Index *vmap,
 
 	GRB_TRY(idr_graph_get_adj_matrices(comp, &adj_matrices));
 
-	paths = calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
+	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
 	if (!paths) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
@@ -81,7 +81,7 @@ cleanup:
 	LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count, &all_paths_t);
 	GrB_free(&all_paths_t);
 	grammar_free(&grammar);
-	free(adj_matrices);
+	free((void *)adj_matrices);
 	return info;
 }
 
@@ -113,7 +113,7 @@ cleanup:
 	free(rows);
 	free(cols);
 	free(components);
-	free(vertex_maps);
+	free((void *)vertex_maps);
 	return info;
 }
 
