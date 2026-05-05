@@ -22,17 +22,19 @@ jobs:
         id: cache-graphblas
         uses: actions/cache@v5
         with:
-          path: |
-            /usr/local/lib/libgraphblas.so*
-            /usr/local/include/suitesparse/GraphBLAS.h
+          path: ~/graphblas
           key: graphblas-${{ runner.os }}-v1
 
       - name: Build & Install GraphBLAS
         if: steps.cache-graphblas.outputs.cache-hit != 'true'
         run: |
-          git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git
-          cd GraphBLAS
+          git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git ~/graphblas
+          cd ~/graphblas
           make
+
+      - name: Install GraphBLAS
+        run: |
+          cd ~/graphblas
           sudo make install
 
       - name: Cache LAGraph
