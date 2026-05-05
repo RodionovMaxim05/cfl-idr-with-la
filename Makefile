@@ -18,7 +18,7 @@ release:
 	cmake --build $(BUILD_DIR) -j$(nproc)
 
 run: all
-	./$(BUILD_DIR)/$(TARGET)
+	./$(BUILD_DIR)/$(TARGET) $(ARGS)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -34,7 +34,7 @@ memcheck: all
 		--show-leak-kinds=all \
 		--track-origins=yes \
 		--error-exitcode=1 \
-		./$(BUILD_DIR)/$(TARGET)
+		./$(BUILD_DIR)/$(TARGET) $(ARGS)
 
 test-memcheck: clean all
 	cd $(BUILD_DIR) && ctest -T memcheck --verbose --output-on-failure -L cfl-idr
