@@ -1,0 +1,60 @@
+name: CI Pipeline
+
+on: [ push, pull_request, workflow_dispatch ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-format clang-tidy \
+            cmake build-essential \
+            libgomp1 libgomp-plugin-nvptx1
+
+      - name: Cache GraphBLAS
+        id: cache-graphblas
+        uses: actions/cache@v5
+        with:
+          path: |
+            /usr/local/lib/libgraphblas.so*
+            /usr/local/include/suitesparse/GraphBLAS.h
+          key: graphblas-${{ runner.os }}-v1
+
+      - name: Build & Install GraphBLAS
+        if: steps.cache-graphblas.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git
+          cd GraphBLAS
+          make
+          sudo make install
+
+      - name: Cache LAGraph
+        id: cache-lagraph
+        uses: actions/cache@v5
+        with:
+          path: ~/lagraph
+          key: lagraph-${{ runner.os }}-v1
+
+      - name: Clone LAGraph
+        if: steps.cache-lagraph.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 https://github.com/SparseLinearAlgebra/LAGraph/tree/homka122/all_algorithms_benchmark ~/lagraph
+
+      - name: Build
+        run: make LAGRAPH_DIR=~/lagraph
+
+      - name: Check Code Formatting
+        run: make format
+
+      - name: Run Static Analysis
+        run: make lint
+
+      - name: Test
+        run: make test LAGRAPH_DIR=~/lagraph
