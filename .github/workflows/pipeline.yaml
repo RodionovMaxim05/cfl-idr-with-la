@@ -7,7 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LAGRAPH_DIR: ~/lagraph
-      GRAPHBLAS_USE_JIT: 0
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,7 +32,8 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git ~/graphblas
           cd ~/graphblas
-          make compact
+          cmake -B build -DGRAPHBLAS_COMPACT=1 -DGRAPHBLAS_USE_JIT=0 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc)
 
       - name: Install GraphBLAS
         run: |
