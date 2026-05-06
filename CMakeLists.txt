@@ -4,6 +4,8 @@ project(cfl-idr-with-la LANGUAGES C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(BUILD_EXECUTABLE "Build main executable" ON)
+
 set(LAGRAPH_DIR "" CACHE PATH "Path to LAGraph source directory")
 if(NOT LAGRAPH_DIR)
     message(FATAL_ERROR "Please set LAGRAPH_DIR: cmake -DLAGRAPH_DIR=/path/to/lagraph ..")
@@ -23,8 +25,10 @@ target_link_libraries(cfl_lib PRIVATE
     /usr/local/lib/libgraphblas.so
 )
 
-add_executable(cfl-idr-with-la src/main.c)
-target_link_libraries(cfl-idr-with-la PRIVATE cfl_lib)
+if(BUILD_EXECUTABLE)
+    add_executable(cfl-idr-with-la src/main.c)
+    target_link_libraries(cfl-idr-with-la PRIVATE cfl_lib)
+endif()
 
 include(CTest)
 add_subdirectory(tests)
