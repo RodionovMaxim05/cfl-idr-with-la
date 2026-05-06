@@ -5,7 +5,7 @@ ifndef LAGRAPH_DIR
 $(error LAGRAPH_DIR is not set. Usage: make LAGRAPH_DIR=/path/to/lagraph)
 endif
 
-.PHONY: all release run clean rebuild test memcheck test-memcheck format lint
+.PHONY: all release lib run clean rebuild test memcheck test-memcheck format lint
 
 all: $(BUILD_DIR)/CMakeCache.txt
 	cmake --build $(BUILD_DIR) -j$(nproc)
@@ -16,6 +16,10 @@ $(BUILD_DIR)/CMakeCache.txt:
 release:
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DLAGRAPH_DIR=$(LAGRAPH_DIR)
 	cmake --build $(BUILD_DIR) -j$(nproc)
+
+lib:
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DLAGRAPH_DIR=$(LAGRAPH_DIR) -DBUILD_EXECUTABLE=OFF
+	cmake --build $(BUILD_DIR) --target cfl_lib -j$(nproc)
 
 run: all
 	./$(BUILD_DIR)/$(TARGET) $(ARGS)
