@@ -86,9 +86,9 @@ GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
  *                           condensation.
  * @param[in]  valueflow     If `true`, apply value-flow specific optimizations
  *                           and constraints.
- * @param[in]  filter_empty  If `true`, remove bracket/square bracket types
- *                           where one of the matrices (opening/closing matrix)
- *                           is empty (nvals == 0 for one of the matrix matrices).
+ * @param[in]  filter_empty  If `true`, remove parenthesis / square bracket types
+ *                           where one of the matrices (opening/closing matrix) is
+ *                           empty (nvals == 0 for one of the matrix matrices).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code otherwise.
  */
@@ -133,9 +133,9 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph);
  *                           (PARD).  If `false`, execute both phases (COMD).
  * @param[in]  valueflow     If `true`, apply value-flow specific optimizations
  *                           and constraints.
- * @param[in]  filter_empty  If `true`, remove bracket/square bracket types where
- *                           one of the matrices (opening/closing matrix) is empty
- *                           (nvals == 0 for one of the matrix matrices).
+ * @param[in]  filter_empty  If `true`, remove parenthesis / square bracket types
+ *                           where one of the matrices (opening/closing matrix) is
+ *                           empty (nvals == 0 for one of the matrix matrices).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code otherwise.
  */
