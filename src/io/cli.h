@@ -17,6 +17,4 @@ typedef struct {
 
 void print_usage(const char *prog);
 
-IdrGrammarType grammar_name_to_type(const char *grammar);
-
-int parse_args(int argc, char *argv[], Args *out);
+int parse_args(Args *out, int argc, char *argv[]);

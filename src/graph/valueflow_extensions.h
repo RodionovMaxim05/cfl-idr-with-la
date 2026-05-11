@@ -4,5 +4,5 @@
 
 #include "cfl_idr.h"
 
-GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
-							  GrB_Matrix *filtered_out);
+GrB_Info filter_bracket_paths(GrB_Matrix *out, const IdrGraph *graph,
+							  GrB_Matrix paths);

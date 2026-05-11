@@ -16,7 +16,7 @@ static int compare_vertex_comp(const void *a, const void *b) {
 	return (comp1 > comp2) - (comp1 < comp2);
 }
 
-static GrB_Info IdrGraph_to_adjacency(const IdrGraph *graph, GrB_Matrix *A_out) {
+static GrB_Info IdrGraph_to_adjacency(GrB_Matrix *A_out, const IdrGraph *graph) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Matrix A = NULL;
 
@@ -44,8 +44,8 @@ cleanup:
 	return info;
 }
 
-static GrB_Info extract_component_IdrGraph(const IdrGraph *graph, GrB_Index *verts,
-										   GrB_Index verts_count, IdrGraph *out) {
+static GrB_Info extract_component_IdrGraph(IdrGraph *out, const IdrGraph *graph,
+										   GrB_Index *verts, GrB_Index verts_count) {
 	GrB_Info info = GrB_SUCCESS;
 
 	out->n = verts_count;
@@ -178,7 +178,7 @@ GrB_Info split_IdrGraph_into_components(const IdrGraph *graph,
 		return GrB_SUCCESS;
 	}
 
-	GRB_TRY(IdrGraph_to_adjacency(graph, &A));
+	GRB_TRY(IdrGraph_to_adjacency(&A, graph));
 
 	GRB_TRY(GrB_Matrix_new(&A_T, GrB_BOOL, n, n));
 	GRB_TRY(GrB_transpose(A_T, NULL, GrB_LOR, A, NULL));
@@ -248,7 +248,7 @@ GrB_Info split_IdrGraph_into_components(const IdrGraph *graph,
 			}
 
 			GrB_Info extract_info = extract_component_IdrGraph(
-				graph, verts, count, &components[valid_count]);
+				&components[valid_count], graph, verts, count);
 			if (extract_info < GrB_SUCCESS) {
 				free(verts);
 				info = extract_info;

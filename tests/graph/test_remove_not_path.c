@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "approximation/idr_graph.h"
 #include "cfl_idr.h"
 #include "graph/remove_not_path.h"
 
@@ -91,7 +92,7 @@ static void test_computeSccs_single_vertex(void) {
 	IdrGraph graph = make_simple_graph(1, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, adj, &sr);
+	GrB_Info info = compute_sccs(&sr, &graph, adj);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 1);
@@ -114,7 +115,7 @@ static void test_computeSccs_two_disconnected_vertices(void) {
 	IdrGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, adj, &sr);
+	GrB_Info info = compute_sccs(&sr, &graph, adj);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 2);
@@ -147,7 +148,7 @@ static void test_computeSccs_directed_cycle_is_one_scc(void) {
 	IdrGraph graph = make_simple_graph(3, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, adj, &sr);
+	GrB_Info info = compute_sccs(&sr, &graph, adj);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 1);
@@ -175,7 +176,7 @@ static void test_computeSccs_dag_transitive_closure(void) {
 	IdrGraph graph = make_simple_graph(4, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, adj, &sr);
+	GrB_Info info = compute_sccs(&sr, &graph, adj);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 4);
@@ -230,7 +231,7 @@ static void test_computeSccs_parallel_edges(void) {
 	IdrGraph graph = make_simple_graph(2, op, cp);
 
 	SccResult sr = {0};
-	GrB_Info info = compute_sccs(&graph, adj, &sr);
+	GrB_Info info = compute_sccs(&sr, &graph, adj);
 	assert(info == GrB_SUCCESS);
 
 	assert(sr.n_scc == 2);
@@ -264,7 +265,7 @@ static void test_removeNotPath_empty_graph_empty_approx(void) {
 	GrB_Matrix over_approx = make_empty_matrix(0);
 
 	IdrGraph result = {0};
-	GrB_Info info = remove_not_path(&graph, over_approx, &result);
+	GrB_Info info = remove_not_path(&result, &graph, over_approx);
 	assert(info == GrB_SUCCESS);
 
 	assert(idr_graph_count_edges(&result) == 0);
@@ -289,7 +290,7 @@ static void test_removeNotPath_removes_edge_not_in_approx(void) {
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
 	IdrGraph result = {0};
-	GrB_Info info = remove_not_path(&graph, over_approx, &result);
+	GrB_Info info = remove_not_path(&result, &graph, over_approx);
 	assert(info == GrB_SUCCESS);
 
 	assert(idr_graph_count_edges(&result) == 1);
@@ -318,7 +319,7 @@ static void test_removeNotPath_keeps_edge_via_indirect_scc(void) {
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
 	IdrGraph result = {0};
-	GrB_Info info = remove_not_path(&graph, over_approx, &result);
+	GrB_Info info = remove_not_path(&result, &graph, over_approx);
 	assert(info == GrB_SUCCESS);
 
 	assert(idr_graph_count_edges(&result) == 3);
@@ -350,7 +351,7 @@ static void test_removeNotPath_multiple_sccs_allowed_path(void) {
 	GrB_Matrix over_approx = make_over_approx(4, srcs, dsts, 1);
 
 	IdrGraph result = {0};
-	GrB_Info info = remove_not_path(&graph, over_approx, &result);
+	GrB_Info info = remove_not_path(&result, &graph, over_approx);
 	assert(info == GrB_SUCCESS);
 
 	assert(idr_graph_count_edges(&result) == 5);
@@ -382,7 +383,7 @@ static void test_removeNotPath_removes_inter_scc_edge_not_covered(void) {
 	GrB_Matrix over_approx = make_over_approx(3, srcs, dsts, 1);
 
 	IdrGraph result = {0};
-	GrB_Info info = remove_not_path(&graph, over_approx, &result);
+	GrB_Info info = remove_not_path(&result, &graph, over_approx);
 	assert(info == GrB_SUCCESS);
 
 	assert(idr_graph_count_edges(&result) == 1);

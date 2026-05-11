@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
 	FILE *out = NULL;
 
 	Args args = {0};
-	if (!parse_args(argc, argv, &args)) {
+	if (!parse_args(&args, argc, argv)) {
 		print_usage(argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
 
 	LAGraph_Init(msg);
 
-	GrB_Info info = parse_graph(args.graph_file_path, &parsed_graph);
+	GrB_Info info = parse_graph(&parsed_graph, args.graph_file_path);
 	if (info != GrB_SUCCESS) {
 		fprintf(stderr, "Error: Failed to parse graph '%s': %d\n",
 				args.graph_file_path, info);

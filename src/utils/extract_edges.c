@@ -155,10 +155,9 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	free(idx);
 }
 
-GrB_Info extract_edges_from_outputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
-									MRGrammar_t grammar, GrB_Index n,
-									const TargetPath *target_path,
-									GrB_Matrix *result_matrices) {
+GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
+									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
+									GrB_Index n, const TargetPath *target_path) {
 	GrB_Info info = GrB_SUCCESS;
 
 	NontermRules *grammar_idx = NULL;
@@ -168,9 +167,9 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 	GrB_Index *cols = NULL;
 	void *values = NULL;
 
-	// Initialize result_matrices
+	// Initialize out (result matrices)
 	for (int64_t t = 0; t < grammar.terms_count; t++) {
-		GRB_TRY(GrB_Matrix_new(&result_matrices[t], GrB_BOOL, n, n));
+		GRB_TRY(GrB_Matrix_new(&out[t], GrB_BOOL, n, n));
 	}
 
 	// Build grammar index
@@ -268,8 +267,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *paths, GrB_Matrix *adj_matrices,
 					GrB_Matrix_extractElement_BOOL(&has_edge, adj_matrices[term], i,
 												   j);
 					if (has_edge) {
-						GRB_TRY(GrB_Matrix_setElement_BOOL(result_matrices[term],
-														   true, i, j));
+						GRB_TRY(GrB_Matrix_setElement_BOOL(out[term], true, i, j));
 					}
 				}
 			} else {

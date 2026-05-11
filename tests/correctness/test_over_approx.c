@@ -18,7 +18,7 @@ static void run_test_logic(const char *graph_path, IdrGrammarType grammar_type,
 						   bool valueflow, size_t expected_size,
 						   const char *expected_path) {
 	IdrGraph graph = {0};
-	GrB_Info info = parse_graph(graph_path, &graph);
+	GrB_Info info = parse_graph(&graph, graph_path);
 	assert(info == GrB_SUCCESS);
 
 	IdrGraph new_graph = {0};

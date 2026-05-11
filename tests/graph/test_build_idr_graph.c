@@ -90,12 +90,12 @@ static void test_null_arguments(void) {
 	GraphMatrices gm = {0};
 	SymbolList sl = symbol_list_create();
 
-	assert(get_idr_graph(NULL, &sl, 3, &DefaultTerminalFormat, &out) ==
+	assert(get_idr_graph(&out, NULL, &sl, 3, &DefaultTerminalFormat) ==
 		   GrB_INVALID_VALUE);
-	assert(get_idr_graph(&gm, NULL, 3, &DefaultTerminalFormat, &out) ==
+	assert(get_idr_graph(&out, &gm, NULL, 3, &DefaultTerminalFormat) ==
 		   GrB_INVALID_VALUE);
-	assert(get_idr_graph(&gm, &sl, 3, NULL, &out) == GrB_INVALID_VALUE);
-	assert(get_idr_graph(&gm, &sl, 3, &DefaultTerminalFormat, NULL) ==
+	assert(get_idr_graph(&out, &gm, &sl, 3, NULL) == GrB_INVALID_VALUE);
+	assert(get_idr_graph(NULL, &gm, &sl, 3, &DefaultTerminalFormat) ==
 		   GrB_INVALID_VALUE);
 
 	symbol_list_free(&sl);
@@ -106,7 +106,7 @@ static void test_empty_symbol_list(void) {
 	GraphMatrices gm = {.matrices = NULL, .matrix_symbols = NULL, .count = 0};
 	IdrGraph out = {0};
 
-	GrB_Info info = get_idr_graph(&gm, &sl, 3, &DefaultTerminalFormat, &out);
+	GrB_Info info = get_idr_graph(&out, &gm, &sl, 3, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -129,7 +129,7 @@ static void test_single_parenthesis_pair(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 
 	assert(info == GrB_SUCCESS);
 
@@ -156,7 +156,7 @@ static void test_single_bracket_pair(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 
 	assert(info == GrB_SUCCESS);
 
@@ -185,7 +185,7 @@ static void test_multiple_parenthesis_pairs(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 2);
@@ -223,7 +223,7 @@ static void test_normal_matrix(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -249,7 +249,7 @@ static void test_empty_close_registers_pair(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -273,7 +273,7 @@ static void test_empty_open_does_not_register_pair(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 0);
@@ -301,7 +301,7 @@ static void test_mixed_all_types(void) {
 
 	IdrGraph out = {0};
 	GrB_Info info =
-		get_idr_graph(&ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat, &out);
+		get_idr_graph(&out, &ms.gm, &ms.symbol_list, n, &DefaultTerminalFormat);
 	assert(info == GrB_SUCCESS);
 
 	assert(out.n_par == 1);

@@ -7,8 +7,8 @@
 #include "approximation/mutual_refinement.h"
 #include "internal/grb_utils.h"
 
-GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_approx,
-									  CondensationResult *out) {
+GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *graph,
+									  GrB_Matrix under_approx) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
@@ -52,7 +52,7 @@ GrB_Info condensate_from_under_approx(const IdrGraph *graph, GrB_Matrix under_ap
 		goto cleanup;
 	}
 
-	GRB_TRY(idr_graph_get_adj_matrices(graph, &adj));
+	GRB_TRY(idr_graph_get_adj_matrices(&adj, graph));
 
 	for (int64_t t = 0; t < terms_count; t++) {
 		GrB_Matrix tmp = NULL;
@@ -107,8 +107,8 @@ void condensation_result_free(CondensationResult *cr) {
 	GrB_Vector_free(&cr->components);
 }
 
-GrB_Info expand_result(GrB_Matrix mr_result, GrB_Vector components, GrB_Index n,
-					   GrB_Matrix *result) {
+GrB_Info expand_result(GrB_Matrix *result, GrB_Matrix mr_result,
+					   GrB_Vector components, GrB_Index n) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Matrix P = NULL;

@@ -16,7 +16,7 @@ static char msg[LAGRAPH_MSG_LEN];
 static void run_test_logic(const char *graph_path, bool valueflow,
 						   const char *expected_path) {
 	IdrGraph graph = {0};
-	GrB_Info info = parse_graph(graph_path, &graph);
+	GrB_Info info = parse_graph(&graph, graph_path);
 	assert(info == GrB_SUCCESS);
 
 	IdrGraph new_graph = {0};

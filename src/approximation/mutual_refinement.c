@@ -62,9 +62,9 @@ cleanup:
 }
 
 static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
-							 uint32_t grammar_tag, GrB_Matrix *out_reachability,
-							 GrB_Matrix **out_edges, const TargetPath *target_path,
-							 bool *target_found, MRCache *cache) {
+							 uint32_t grammar_tag, const TargetPath *target_path,
+							 MRCache *cache, GrB_Matrix *out_reachability,
+							 GrB_Matrix **out_edges, bool *target_found) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	GrB_Matrix *adj = NULL;
@@ -74,14 +74,14 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	uint64_t key = get_graph_cache_hash(graph);
 	const MRStepResult *hit = mr_cache_lookup(cache, key, grammar_tag);
 
-	GRB_TRY(idr_graph_get_adj_matrices(graph, &adj));
+	GRB_TRY(idr_graph_get_adj_matrices(&adj, graph));
 
 	if (hit) {
-		GRB_TRY(extract_edges_from_outputs(hit->matrices, adj, grammar, graph->n,
-										   target_path, *out_edges));
+		GRB_TRY(extract_edges_from_outputs(*out_edges, hit->matrices, adj, grammar,
+										   graph->n, target_path));
 
 		GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
-		GRB_TRY(extract_non_trivial_paths(hit->matrices[0], out_reachability));
+		GRB_TRY(extract_non_trivial_paths(out_reachability, hit->matrices[0]));
 
 		if (target_path) {
 			*target_found = matrix_has_path_udt(hit->matrices[0], target_path);
@@ -102,11 +102,11 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 								 grammar.nonterms_count, grammar.rules,
 								 grammar.rules_count, msg, 0));
 
-	GRB_TRY(extract_edges_from_outputs(paths, adj, grammar, graph->n, target_path,
-									   *out_edges));
+	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, adj, grammar, graph->n,
+									   target_path));
 
 	GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
-	GRB_TRY(extract_non_trivial_paths(paths[0], out_reachability));
+	GRB_TRY(extract_non_trivial_paths(out_reachability, paths[0]));
 
 	mr_cache_insert(cache, key, grammar_tag, paths, grammar.nonterms_count,
 					all_paths_t);
@@ -126,10 +126,11 @@ cleanup:
 		goto cleanup;                                                               \
 	} while (0)
 
-GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_type,
-								  GrB_Matrix *result, bool valueflow,
-								  bool filter_empty, const TargetPath *target_path,
-								  MRCache *cache) {
+static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *graph,
+										 IdrGrammarType grammar_type, bool valueflow,
+										 bool filter_empty,
+										 const TargetPath *target_path,
+										 MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 	bool has_normal = (graph->normal != NULL);
 	bool target_found = false;
@@ -173,8 +174,8 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 		goto cleanup;
 	}
 
-	GRB_TRY(run_cfl_step(graph, alpha_grammar, GRAMMAR_TAG_ALPHA, &alpha_reach,
-						 &alpha_edges, target_path, &target_found, cache));
+	GRB_TRY(run_cfl_step(graph, alpha_grammar, GRAMMAR_TAG_ALPHA, target_path, cache,
+						 &alpha_reach, &alpha_edges, &target_found));
 	grammar_free(&alpha_grammar);
 
 	if (target_path != NULL && !target_found) {
@@ -205,8 +206,8 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 		goto cleanup;
 	}
 
-	GRB_TRY(run_cfl_step(&alpha_graph, beta_grammar, GRAMMAR_TAG_BETA, &beta_reach,
-						 &beta_edges, target_path, &target_found, cache));
+	GRB_TRY(run_cfl_step(&alpha_graph, beta_grammar, GRAMMAR_TAG_BETA, target_path,
+						 cache, &beta_reach, &beta_edges, &target_found));
 	grammar_free(&beta_grammar);
 
 	if (target_path != NULL && !target_found) {
@@ -240,8 +241,8 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 		}
 
 		GRB_TRY(run_cfl_step(&beta_graph, project_grammar, GRAMMAR_TAG_PROJECT,
-							 &project_reach, &project_edges, target_path,
-							 &target_found, cache));
+							 target_path, cache, &project_reach, &project_edges,
+							 &target_found));
 		grammar_free(&project_grammar);
 
 		if (target_path != NULL && !target_found) {
@@ -284,8 +285,8 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 
 			GRB_TRY(run_cfl_step(cur_graph, exclude_grammar,
 								 GRAMMAR_TAG_EXCLUDE_BASE + (uint32_t)ex_bra,
-								 &cur_reach, &exclude_edges, target_path,
-								 &target_found, cache));
+								 target_path, cache, &cur_reach, &exclude_edges,
+								 &target_found));
 			grammar_free(&exclude_grammar);
 			GrB_Matrix_free(&cur_reach);
 
@@ -307,7 +308,7 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 
 	if (valueflow) {
 		GRB_TRY(
-			apply_valueflow_over_approx(final_graph, &beta_reach, &filtered_graph));
+			apply_valueflow_over_approx(&filtered_graph, final_graph, &beta_reach));
 		final_graph = &filtered_graph;
 	}
 
@@ -326,7 +327,7 @@ GrB_Info mutual_refinement_single(const IdrGraph *graph, IdrGrammarType grammar_
 		}
 	} else {
 		// Recursive refinement
-		GRB_TRY(mutual_refinement_single(final_graph, grammar_type, result,
+		GRB_TRY(mutual_refinement_single(result, final_graph, grammar_type,
 										 valueflow, filter_empty, target_path,
 										 cache));
 	}
@@ -348,12 +349,13 @@ cleanup:
 	return info;
 }
 
-GrB_Info
-mutual_refinement_with_components(IdrGraph *components, GrB_Index **vertex_maps,
-								  GrB_Index comp_count, GrB_Index global_n,
-								  IdrGrammarType grammar_type, GrB_Matrix *result,
-								  bool valueflow, bool filter_empty,
-								  const TargetPath *target_path, MRCache *cache) {
+GrB_Info mutual_refinement_with_components(GrB_Matrix *result, IdrGraph *components,
+										   GrB_Index **vertex_maps,
+										   GrB_Index comp_count, GrB_Index global_n,
+										   IdrGrammarType grammar_type,
+										   bool valueflow, bool filter_empty,
+										   const TargetPath *target_path,
+										   MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Index *rows = NULL;
@@ -392,7 +394,7 @@ mutual_refinement_with_components(IdrGraph *components, GrB_Index **vertex_maps,
 			IdrGraph reduced_comp = {0};
 			bool reduced_owned = false;
 			if (!is_all_pairs(single_path, comp->n)) {
-				info = remove_not_path(comp, single_path, &reduced_comp);
+				info = remove_not_path(&reduced_comp, comp, single_path);
 				GrB_Matrix_free(&single_path);
 				if (info != GrB_SUCCESS) {
 					goto cleanup;
@@ -404,14 +406,14 @@ mutual_refinement_with_components(IdrGraph *components, GrB_Index **vertex_maps,
 			}
 
 			TargetPath local_target = {.src = local_src, .tgt = local_tgt};
-			info = mutual_refinement_single(&reduced_comp, grammar_type,
-											&comp_result, valueflow, filter_empty,
+			info = mutual_refinement_single(&comp_result, &reduced_comp,
+											grammar_type, valueflow, filter_empty,
 											&local_target, cache);
 			if (reduced_owned) {
 				idr_graph_free(&reduced_comp);
 			}
 		} else {
-			info = mutual_refinement_single(comp, grammar_type, &comp_result,
+			info = mutual_refinement_single(&comp_result, comp, grammar_type,
 											valueflow, filter_empty, NULL, cache);
 		}
 
@@ -451,9 +453,9 @@ cleanup:
 	return info;
 }
 
-GrB_Info mutual_refinement(const IdrGraph *graph, IdrGrammarType grammar_type,
-						   GrB_Matrix *result, bool valueflow, bool filter_empty,
-						   MRCache *cache) {
+GrB_Info mutual_refinement(GrB_Matrix *result, const IdrGraph *graph,
+						   IdrGrammarType grammar_type, bool valueflow,
+						   bool filter_empty, MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
 
 	IdrGraph *components = NULL;
@@ -463,8 +465,8 @@ GrB_Info mutual_refinement(const IdrGraph *graph, IdrGrammarType grammar_type,
 	GRB_TRY(split_IdrGraph_into_components(graph, &components, &vertex_maps,
 										   &comp_count));
 
-	GRB_TRY(mutual_refinement_with_components(components, vertex_maps, comp_count,
-											  graph->n, grammar_type, result,
+	GRB_TRY(mutual_refinement_with_components(result, components, vertex_maps,
+											  comp_count, graph->n, grammar_type,
 											  valueflow, filter_empty, NULL, cache));
 
 cleanup:

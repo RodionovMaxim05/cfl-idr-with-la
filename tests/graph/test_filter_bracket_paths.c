@@ -58,7 +58,7 @@ static void test_empty_paths(void) {
 	GrB_Matrix paths = make_paths(2, NULL, NULL, 0);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 0);
 
@@ -78,7 +78,7 @@ static void test_no_matching_brackets(void) {
 	GrB_Matrix paths = make_paths(2, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 0);
 
@@ -98,7 +98,7 @@ static void test_simple_matching_bracket(void) {
 	GrB_Matrix paths = make_paths(3, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 1);
 	assert(matrix_has_entry(filtered, 0, 2));
@@ -119,7 +119,7 @@ static void test_mismatched_bracket_ids(void) {
 	GrB_Matrix paths = make_paths(3, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 0);
 
@@ -138,7 +138,7 @@ static void test_no_close_bracket(void) {
 	GrB_Matrix paths = make_paths(2, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 0);
 
@@ -158,7 +158,7 @@ static void test_no_reachability_between_brackets(void) {
 	GrB_Matrix paths = make_paths(4, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 0);
 
@@ -180,7 +180,7 @@ static void test_path_through_normal_edges(void) {
 	GrB_Matrix paths = make_paths(4, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 1);
 	assert(matrix_has_entry(filtered, 0, 3));
@@ -204,7 +204,7 @@ static void test_multiple_valid_paths(void) {
 	GrB_Matrix paths = make_paths(5, rows, cols, 2);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 2);
 	assert(matrix_has_entry(filtered, 0, 2));
@@ -229,7 +229,7 @@ static void test_multiple_open_close_same_id(void) {
 	GrB_Matrix paths = make_paths(4, rows, cols, 1);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 1);
 	assert(matrix_has_entry(filtered, 0, 3));
@@ -252,7 +252,7 @@ static void test_nested_brackets(void) {
 	GrB_Matrix paths = make_paths(5, rows, cols, 3);
 	GrB_Matrix filtered = NULL;
 
-	filter_bracket_paths(&g, paths, &filtered);
+	filter_bracket_paths(&filtered, &g, paths);
 
 	assert(count_matrix_entries(filtered) == 3);
 	assert(matrix_has_entry(filtered, 0, 2));

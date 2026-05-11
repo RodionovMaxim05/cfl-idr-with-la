@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "approximation/idr_graph.h"
 #include "cfl_idr.h"
 #include "graph/condensate_graph.h"
 
@@ -62,7 +63,7 @@ static void test_empty_graph(void) {
 	GrB_Matrix under = make_empty_matrix(3);
 
 	CondensationResult res = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &res);
+	GrB_Info info = condensate_from_under_approx(&res, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	// With an empty under_approx, its own vertex is its own representative
@@ -94,7 +95,7 @@ static void test_mutual_paths_cause_merging(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -125,7 +126,7 @@ static void test_one_way_path_no_merge(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 0, 1);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -161,7 +162,7 @@ static void test_three_vertices_all_merged(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 2, 1);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -197,7 +198,7 @@ static void test_partial_mutual_paths(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 2);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -232,7 +233,7 @@ static void test_edges_between_components_deduplicated(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -269,7 +270,7 @@ static void test_edges_between_diff_components_merging(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 1, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
@@ -309,7 +310,7 @@ static void test_condensate_multiple_vertices(void) {
 	GrB_Matrix_setElement_BOOL(under, true, 2, 0);
 
 	CondensationResult cr = {0};
-	GrB_Info info = condensate_from_under_approx(&graph, under, &cr);
+	GrB_Info info = condensate_from_under_approx(&cr, &graph, under);
 	assert(info == GrB_SUCCESS);
 
 	GrB_Index rep0 = get_rep(cr.components, 0);
