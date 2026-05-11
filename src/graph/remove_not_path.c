@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "approximation/idr_graph.h"
 #include "internal/grb_utils.h"
 
 GrB_Info compute_sccs(SccResult *out, const IdrGraph *graph, GrB_Matrix adj) {

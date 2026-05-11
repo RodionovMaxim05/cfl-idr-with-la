@@ -3,6 +3,7 @@
 #include <LAGraph.h>
 #include <stdlib.h>
 
+#include "approximation/idr_graph.h"
 #include "internal/grb_utils.h"
 
 typedef struct {
