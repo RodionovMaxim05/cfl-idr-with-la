@@ -7,38 +7,6 @@
 
 #include "internal/grb_utils.h"
 
-GrB_Info build_adjacency(GrB_Matrix *out, const IdrGraph *graph) {
-	GrB_Info info = GrB_SUCCESS;
-	GrB_Matrix adj = NULL;
-
-	GRB_TRY(GrB_Matrix_new(&adj, GrB_BOOL, graph->n, graph->n));
-
-	for (int64_t i = 0; i < graph->n_par; i++) {
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_par[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_par[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-	}
-
-	for (int64_t i = 0; i < graph->n_bra; i++) {
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_bra[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_bra[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-	}
-
-	if (graph->normal != NULL) {
-		GRB_TRY(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->normal, NULL));
-	}
-
-	*out = adj;
-	adj = NULL;
-
-cleanup:
-	GrB_Matrix_free(&adj);
-	return info;
-}
-
 GrB_Info compute_sccs(SccResult *out, const IdrGraph *graph, GrB_Matrix adj) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
@@ -238,7 +206,7 @@ GrB_Info remove_not_path(IdrGraph *out, const IdrGraph *graph,
 		goto build_output;
 	}
 
-	GRB_TRY(build_adjacency(&adj, graph));
+	GRB_TRY(idr_graph_to_adjacency(&adj, graph));
 
 	// Calculating SCC
 	GRB_TRY(compute_sccs(&sr, graph, adj));

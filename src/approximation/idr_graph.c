@@ -193,7 +193,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_graph_get_adj_matrices(GrB_Matrix **out, const IdrGraph *graph) {
+GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph) {
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
 	GrB_Matrix *adj = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
 	if (!adj) {
@@ -214,4 +214,36 @@ GrB_Info idr_graph_get_adj_matrices(GrB_Matrix **out, const IdrGraph *graph) {
 
 	*out = adj;
 	return GrB_SUCCESS;
+}
+
+GrB_Info idr_graph_to_adjacency(GrB_Matrix *out, const IdrGraph *graph) {
+	GrB_Info info = GrB_SUCCESS;
+	GrB_Matrix adj = NULL;
+
+	GRB_TRY(GrB_Matrix_new(&adj, GrB_BOOL, graph->n, graph->n));
+
+	for (int64_t i = 0; i < graph->n_par; i++) {
+		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_par[i], GrB_ALL, 0,
+						   GrB_ALL, 0, NULL));
+		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_par[i], GrB_ALL, 0,
+						   GrB_ALL, 0, NULL));
+	}
+
+	for (int64_t i = 0; i < graph->n_bra; i++) {
+		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_bra[i], GrB_ALL, 0,
+						   GrB_ALL, 0, NULL));
+		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_bra[i], GrB_ALL, 0,
+						   GrB_ALL, 0, NULL));
+	}
+
+	if (graph->normal != NULL) {
+		GRB_TRY(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->normal, NULL));
+	}
+
+	*out = adj;
+	adj = NULL;
+
+cleanup:
+	GrB_Matrix_free(&adj);
+	return info;
 }

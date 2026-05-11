@@ -16,6 +16,22 @@
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
+/**
+ * @brief Processes a single strongly-connected component to compute its
+ * under-approximation of Dyck-reachable paths.
+ *
+ * This static helper function performs CFL-reachability analysis on an isolated
+ * graph component using the `LAGraph_CFL_AllPaths` engine.
+ *
+ * @param[out] result     Global result matrix (n × n, `GrB_BOOL`) to accumulate
+ *                        reachable pairs.
+ * @param[in]  comp       Component graph to analyze. Ownership remains with caller.
+ * @param[in]  vmap       Vertex mapping array: `vmap[local_idx] → global_idx`.
+ * @param[in]  valueflow  If `true`, apply value-flow constraints.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
+ *         Common errors: `GrB_OUT_OF_MEMORY`, `GrB_INVALID_VALUE`.
+ */
 static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp,
 											   GrB_Index *vmap, bool valueflow) {
 	GrB_Info info = GrB_SUCCESS;
@@ -35,7 +51,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 		goto cleanup;
 	}
 
-	GRB_TRY(idr_graph_get_adj_matrices(&adj_matrices, comp));
+	GRB_TRY(idr_graph_collect_matrices(&adj_matrices, comp));
 
 	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
 	if (!paths) {

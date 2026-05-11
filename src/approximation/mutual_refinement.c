@@ -14,6 +14,15 @@
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
+/**
+ * @brief Checks whether a CFL-reachability result matrix contains a specific
+ * source-to-target path.
+ *
+ * @param[in] m            Matrix to query. Must be valid and of compatible type.
+ * @param[in] target_path  Target path specification (source and target indices).
+ *
+ * @return `true` if the path exists in the matrix, `false` otherwise.
+ */
 static bool matrix_has_path_udt(GrB_Matrix m, const TargetPath *target_path) {
 	AllPathsElem val = {0};
 	GrB_Info info =
@@ -21,6 +30,22 @@ static bool matrix_has_path_udt(GrB_Matrix m, const TargetPath *target_path) {
 	return info == GrB_SUCCESS;
 }
 
+/**
+ * @brief Computes the element-wise logical intersection of three boolean matrices.
+ *
+ * Performs `result = A ∧ B ∧ C` using GraphBLAS `GrB_Matrix_eWiseMult_BinaryOp`
+ * with the `GrB_LAND` operator. If `C` is `NULL`, computes only `A ∧ B`.
+ *
+ * @param[out] result  Output matrix (newly allocated, n × n, `GrB_BOOL`).
+ * @param[in]  A       First input matrix.
+ * @param[in]  B       Second input matrix.
+ * @param[in]  C       Optional third input matrix; may be `NULL`.
+ * @param[in]  n       Dimension of the square matrices.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
+ *         On error, `*result` is set to `NULL` and any temporary allocations
+ *         are freed.
+ */
 static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
 								  GrB_Matrix C, GrB_Index n) {
 	*result = NULL;
@@ -61,6 +86,31 @@ cleanup:
 	return info;
 }
 
+/**
+ * @brief Executes a single CFL-reachability computation step with caching support.
+ *
+ * This function orchestrates one phase of the mutual-refinement algorithm:
+ * 1. Computes a cache key via `get_graph_cache_hash`.
+ * 2. Checks the cache for a precomputed result matching `(graph_key, grammar_tag)`.
+ * 3. If cached: extracts edges and reachability from stored results.
+ * 4. If not cached: invokes `LAGraph_CFL_AllPaths`, extracts results, and inserts
+ *    them into the cache via `mr_cache_insert`.
+ * 5. Optionally checks for the presence of a target path.
+ *
+ * @param[in]  graph             Input graph for CFL analysis.
+ * @param[in]  grammar           Grammar specification (rules, nonterminals, etc.).
+ * @param[in]  grammar_tag       Tag identifying the grammar variant for caching.
+ * @param[in]  target_path       Optional target path for early termination checks.
+ * @param[in]  cache             Cache for storing/retrieving intermediate results.
+ * @param[out] out_reachability  Output matrix: reachability via start symbol.
+ * @param[out] out_edges         Array of edge matrices extracted for each terminal.
+ * @param[out] target_found      Output flag: `true` if target path was found.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
+ *
+ * @note `out_edges` must point to a pre-allocated array of sufficient size
+ *       (at least `grammar.terms_count` elements).
+ */
 static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 							 uint32_t grammar_tag, const TargetPath *target_path,
 							 MRCache *cache, GrB_Matrix *out_reachability,
@@ -74,7 +124,7 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	uint64_t key = get_graph_cache_hash(graph);
 	const MRStepResult *hit = mr_cache_lookup(cache, key, grammar_tag);
 
-	GRB_TRY(idr_graph_get_adj_matrices(&adj, graph));
+	GRB_TRY(idr_graph_collect_matrices(&adj, graph));
 
 	if (hit) {
 		GRB_TRY(extract_edges_from_outputs(*out_edges, hit->matrices, adj, grammar,
@@ -126,6 +176,29 @@ cleanup:
 		goto cleanup;                                                               \
 	} while (0)
 
+/**
+ * @brief Core mutual-refinement algorithm for a single (non-decomposed) graph.
+ *
+ * Implements the iterative grammar-based refinement loop:
+ * - Executes Alpha, Beta, and optional Project/Exclude phases.
+ * - Intersects results from different phases to tighten the approximation.
+ * - Checks for convergence (edge count stability) and recurses if needed.
+ * - Supports on-demand analysis via `target_path` for early termination.
+ * - Applies value-flow post-processing if requested.
+ *
+ * Uses `run_cfl_step` for each grammar phase and `build_idr_graph` to construct
+ * refined graphs from extracted edges.
+ *
+ * @param[out] result        Output reachability matrix (n × n, `GrB_BOOL`).
+ * @param[in]  graph         Input graph to analyze.
+ * @param[in]  grammar_type  Grammar variant controlling refinement behavior.
+ * @param[in]  valueflow     If `true`, apply value-flow post-processing.
+ * @param[in]  filter_empty  If `true`, filter empty parenthesis/bracket pairs.
+ * @param[in]  target_path   Optional target path for on-demand analysis.
+ * @param[in]  cache         Cache for intermediate CFL results.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
+ */
 static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *graph,
 										 IdrGrammarType grammar_type, bool valueflow,
 										 bool filter_empty,
