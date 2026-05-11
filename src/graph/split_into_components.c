@@ -16,34 +16,29 @@ static int compare_vertex_comp(const void *a, const void *b) {
 	return (comp1 > comp2) - (comp1 < comp2);
 }
 
-static GrB_Info IdrGraph_to_adjacency(GrB_Matrix *A_out, const IdrGraph *graph) {
-	GrB_Info info = GrB_SUCCESS;
-	GrB_Matrix A = NULL;
-
-	GRB_TRY(GrB_Matrix_new(&A, GrB_BOOL, graph->n, graph->n));
-
-	for (int64_t i = 0; i < graph->n_par; i++) {
-		GRB_TRY(GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, graph->open_par[i], NULL));
-		GRB_TRY(GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, graph->close_par[i], NULL));
-	}
-
-	for (int64_t i = 0; i < graph->n_bra; i++) {
-		GRB_TRY(GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, graph->open_bra[i], NULL));
-		GRB_TRY(GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, graph->close_bra[i], NULL));
-	}
-
-	if (graph->normal != NULL) {
-		GRB_TRY(GrB_eWiseAdd(A, NULL, NULL, GrB_LOR, A, graph->normal, NULL));
-	}
-
-	*A_out = A;
-	A = NULL;
-
-cleanup:
-	GrB_Matrix_free(&A);
-	return info;
-}
-
+/**
+ * @brief Extracts a subgraph corresponding to a specific set of vertices.
+ *
+ * Given a list of vertex indices from the original graph, this function:
+ * 1. Creates new matrices of size `verts_count × verts_count` for each
+ *    parenthesis/bracket/normal matrix type.
+ * 2. Extracts the relevant submatrix via `GrB_Matrix_extract`, reindexing
+ *    rows/columns to the local `[0, verts_count)` range.
+ * 3. Filters out parenthesis/bracket pairs where both open and close matrices
+ *    are empty (zero non-zero entries), reducing output size.
+ *
+ * The extracted graph preserves all edge labels and structure restricted to
+ * the specified vertex subset.
+ *
+ * @param[out] out          Output `IdrGraph` to populate. Must be valid and
+ *                          uninitialized.
+ * @param[in]  graph        Source graph to extract from. Must not be `NULL`.
+ * @param[in]  verts        Array of original vertex indices to include.
+ *                          Must have `verts_count` elements.
+ * @param[in]  verts_count  Number of vertices in the component.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
+ */
 static GrB_Info extract_component_IdrGraph(IdrGraph *out, const IdrGraph *graph,
 										   GrB_Index *verts, GrB_Index verts_count) {
 	GrB_Info info = GrB_SUCCESS;
@@ -178,7 +173,7 @@ GrB_Info split_IdrGraph_into_components(const IdrGraph *graph,
 		return GrB_SUCCESS;
 	}
 
-	GRB_TRY(IdrGraph_to_adjacency(&A, graph));
+	GRB_TRY(idr_graph_to_adjacency(&A, graph));
 
 	GRB_TRY(GrB_Matrix_new(&A_T, GrB_BOOL, n, n));
 	GRB_TRY(GrB_transpose(A_T, NULL, GrB_LOR, A, NULL));

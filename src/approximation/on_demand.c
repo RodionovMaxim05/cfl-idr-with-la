@@ -13,6 +13,18 @@
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 
+/**
+ * @brief Computes the set of paths that are in the over-approximation but not
+ * yet confirmed by the under-approximation.
+ *
+ * @param[out] out           Newly allocated `GrB_Matrix` (n × n, `GrB_BOOL`)
+ *                           holding the unknown paths.
+ * @param[in]  over_approx   Matrix representing the current over-approximation.
+ * @param[in]  under_approx  Matrix representing the current under-approximation.
+ * @param[in]  n             Dimension of the square matrices.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
+ */
 static GrB_Info compute_unknown_paths(GrB_Matrix *out, GrB_Matrix over_approx,
 									  GrB_Matrix under_approx, GrB_Index n) {
 	GrB_Info info = GrB_SUCCESS;
@@ -24,6 +36,34 @@ cleanup:
 	return info;
 }
 
+/**
+ * @brief Refines mutual-refinement results using grammar-based analysis on
+ * condensed graph components.
+ *
+ * This function implements the core refinement loop for on-demand CFL-reachability:
+ * 1. Condenses the input graph using the under-approximation to merge mutually
+ *    reachable vertices (`condensate_from_under_approx`).
+ * 2. Identifies "unknown" vertex pairs: edges present in `over_approx` but absent
+ *    from `under_approx`.
+ * 3. Projects unknown pairs onto the condensed SCC graph to find candidate SCC
+ *    pairs requiring refinement.
+ * 4. For each candidate SCC pair, invokes `mutual_refinement_with_components`
+ *    with a specific grammar to determine if the path is truly reachable.
+ * 5. Confirmed paths are merged back into the result via matrix multiplication
+ *    with the component mapping matrix `S`.
+ *
+ * @param[out] result        On success, a newly allocated `GrB_Matrix` (n × n,
+ *                           `GrB_BOOL`) with the refined reachability result.
+ * @param[in]  graph         Original input graph. Must not be `NULL`.
+ * @param[in]  under_approx  Current under-approximation matrix. Must not be `NULL`.
+ * @param[in]  over_approx   Current over-approximation matrix. Must not be `NULL`.
+ * @param[in]  grammar_type  Grammar variant for refinement (see `IdrGrammarType`).
+ * @param[in]  valueflow     If `true`, apply value-flow specific constraints.
+ * @param[in]  filter_empty  If `true`, filter empty parenthesis/bracket pairs
+ *                           during graph construction.
+ *
+ * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
+ */
 static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph,
 									   GrB_Matrix under_approx,
 									   GrB_Matrix over_approx,

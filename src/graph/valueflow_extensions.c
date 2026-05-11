@@ -37,7 +37,7 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	GrB_Matrix tmp_m = NULL;
 	SccResult scc = {0};
 
-	GRB_TRY(build_adjacency(&adj, graph));
+	GRB_TRY(idr_graph_to_adjacency(&adj, graph));
 	GRB_TRY(compute_sccs(&scc, graph, adj));
 	GrB_Index n_scc = scc.n_scc;
 	GrB_Index n = graph->n;
@@ -170,7 +170,7 @@ GrB_Info filter_bracket_paths(GrB_Matrix *out, const IdrGraph *graph,
 	SccResult scc = {0};
 	GrB_Index n = graph->n;
 
-	GRB_TRY(build_adjacency(&adj, graph));
+	GRB_TRY(idr_graph_to_adjacency(&adj, graph));
 	GRB_TRY(compute_sccs(&scc, graph, adj));
 	GrB_Index n_scc = scc.n_scc;
 
