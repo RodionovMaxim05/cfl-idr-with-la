@@ -60,7 +60,7 @@ void idr_graph_free(IdrGraph *g);
  * present (a conservative under-approximation).
  *
  * @param[out] result     On success, a newly allocated `GrB_Matrix` (n × n,
- * `GrB_BOOL`) holding the under-approximation.
+ *                        `GrB_BOOL`) holding the under-approximation.
  * @param[in]  graph      Input graph to analyze.  Must not be NULL.
  * @param[in]  valueflow  If `true`, apply value-flow specific constraints.
  *
@@ -77,18 +77,18 @@ GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
  * over-approximation of reachable paths. It combines graph condensation with
  * iterative grammar-based analysis to refine path approximations.
  *
- * @param[out] result         On success, a newly allocated `GrB_Matrix`
- *                            (n × n, `GrB_BOOL`).
- * @param[in]  graph          Input graph to analyze.  Must not be NULL.
- * @param[in]  grammar_type   Grammar used for refinement (see `IdrGrammarType`).
- * @param[in]  under_approx   Optional under-approximation matrix produced by
- *                            `idr_get_under_approx`.  Pass `NULL` to skip
- *                            condensation.
- * @param[in]  valueflow      If `true`, apply value-flow specific optimizations
- *                            and constraints.
- * @param[in]  filter_empty   If `true`, remove bracket/square bracket types where
- *                            one of the matrices (opening/closing matrix) is empty
- *                            (nvals == 0 for one of the matrix matrices).
+ * @param[out] result        On success, a newly allocated `GrB_Matrix` (n × n,
+ *                           `GrB_BOOL`).
+ * @param[in]  graph         Input graph to analyze.  Must not be NULL.
+ * @param[in]  grammar_type  Grammar used for refinement (see `IdrGrammarType`).
+ * @param[in]  under_approx  Optional under-approximation matrix produced by
+ *                           `idr_get_under_approx`.  Pass `NULL` to skip
+ *                           condensation.
+ * @param[in]  valueflow     If `true`, apply value-flow specific optimizations
+ *                           and constraints.
+ * @param[in]  filter_empty  If `true`, remove bracket/square bracket types
+ *                           where one of the matrices (opening/closing matrix)
+ *                           is empty (nvals == 0 for one of the matrix matrices).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code otherwise.
  */
@@ -122,20 +122,20 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph);
  * This approach is more efficient than full mutual refinement when only incremental
  * updates are needed.
  *
- * @param[out] result       On success, a newly allocated `GrB_Matrix`
- *                          (n × n, `GrB_BOOL`) with the refined result.
- * @param[in]  graph        Input graph to analyze.  Must not be NULL.
- * @param[in]  under_approx Current under-approximation (e.g., from
- *                          `idr_get_under_approx`).  Must not be NULL.
- * @param[in]  over_approx  Current over-approximation (e.g., from
- *                          `idr_get_over_approx`).  Must not be NULL.
- * @param[in]  parity_d     If `true`, execute only the first refinement phase
- *                          (PARD).  If `false`, execute both phases (COMD).
- * @param[in]  valueflow    If `true`, apply value-flow specific optimizations
- *                          and constraints.
- * @param[in]  filter_empty If `true`, remove bracket/square bracket types where
- *                          one of the matrices (opening/closing matrix) is empty
- *                          (nvals == 0 for one of the matrix matrices).
+ * @param[out] result        On success, a newly allocated `GrB_Matrix`
+ *                           (n × n, `GrB_BOOL`) with the refined result.
+ * @param[in]  graph         Input graph to analyze.  Must not be NULL.
+ * @param[in]  under_approx  Current under-approximation (e.g., from
+ *                           `idr_get_under_approx`).  Must not be NULL.
+ * @param[in]  over_approx   Current over-approximation (e.g., from
+ *                           `idr_get_over_approx`).  Must not be NULL.
+ * @param[in]  parity_d      If `true`, execute only the first refinement phase
+ *                           (PARD).  If `false`, execute both phases (COMD).
+ * @param[in]  valueflow     If `true`, apply value-flow specific optimizations
+ *                           and constraints.
+ * @param[in]  filter_empty  If `true`, remove bracket/square bracket types where
+ *                           one of the matrices (opening/closing matrix) is empty
+ *                           (nvals == 0 for one of the matrix matrices).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code otherwise.
  */
