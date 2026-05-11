@@ -13,22 +13,22 @@
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
 
-static GrB_Info compute_unknown_paths(GrB_Matrix over_approx,
-									  GrB_Matrix under_approx, GrB_Index n,
-									  GrB_Matrix *unknown) {
+static GrB_Info compute_unknown_paths(GrB_Matrix *out, GrB_Matrix over_approx,
+									  GrB_Matrix under_approx, GrB_Index n) {
 	GrB_Info info = GrB_SUCCESS;
 
-	GRB_TRY(GrB_Matrix_new(unknown, GrB_BOOL, n, n));
-	GRB_TRY(GrB_Matrix_assign(*unknown, under_approx, NULL, over_approx, GrB_ALL, n,
+	GRB_TRY(GrB_Matrix_new(out, GrB_BOOL, n, n));
+	GRB_TRY(GrB_Matrix_assign(*out, under_approx, NULL, over_approx, GrB_ALL, n,
 							  GrB_ALL, n, GrB_DESC_RSC));
 cleanup:
 	return info;
 }
 
-static GrB_Info
-refine_mr_with_grammar(const IdrGraph *graph, GrB_Matrix under_approx,
-					   GrB_Matrix over_approx, IdrGrammarType grammar_type,
-					   GrB_Matrix *result, bool valueflow, bool filter_empty) {
+static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph,
+									   GrB_Matrix under_approx,
+									   GrB_Matrix over_approx,
+									   IdrGrammarType grammar_type, bool valueflow,
+									   bool filter_empty) {
 	GrB_Info info = GrB_SUCCESS;
 
 	MRCache cache = {0};
@@ -52,10 +52,10 @@ refine_mr_with_grammar(const IdrGraph *graph, GrB_Matrix under_approx,
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
 
-	GRB_TRY(condensate_from_under_approx(graph, under_approx, &cr));
+	GRB_TRY(condensate_from_under_approx(&cr, graph, under_approx));
 
 	// Identify unknown resultPaths: candidates not yet confirmed by under-approx
-	GRB_TRY(compute_unknown_paths(over_approx, under_approx, n, &unknown_paths));
+	GRB_TRY(compute_unknown_paths(&unknown_paths, over_approx, under_approx, n));
 
 	comp_map = malloc(n * sizeof(GrB_Index));
 	if (!comp_map) {
@@ -122,7 +122,7 @@ refine_mr_with_grammar(const IdrGraph *graph, GrB_Matrix under_approx,
 			TargetPath target_path = {.src = src, .tgt = tgt};
 
 			info = mutual_refinement_with_components(
-				components, vertex_maps, comp_count, n_scc, grammar_type, &mr_result,
+				&mr_result, components, vertex_maps, comp_count, n_scc, grammar_type,
 				valueflow, filter_empty, &target_path, &cache);
 
 			if (info == GrB_SUCCESS && mr_result != NULL) {
@@ -192,12 +192,13 @@ GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 	if (is_all_pairs(over_approx, graph->n)) {
 		reduced1 = *graph;
 	} else {
-		GRB_TRY(remove_not_path(graph, over_approx, &reduced1));
+		GRB_TRY(remove_not_path(&reduced1, graph, over_approx));
 		reduced1_owned = true;
 	}
 
-	GRB_TRY(refine_mr_with_grammar(&reduced1, under_approx, over_approx, IDR_DEFAULT,
-								   &default_paths, valueflow, filter_empty));
+	GRB_TRY(refine_mr_with_grammar(&default_paths, &reduced1, under_approx,
+								   over_approx, IDR_DEFAULT, valueflow,
+								   filter_empty));
 
 	if (parity_d) {
 		*result = default_paths;
@@ -210,7 +211,7 @@ GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 	if (is_all_pairs(default_paths, graph->n)) {
 		reduced2 = reduced1;
 	} else {
-		GRB_TRY(remove_not_path(&reduced1, default_paths, &reduced2));
+		GRB_TRY(remove_not_path(&reduced2, &reduced1, default_paths));
 		reduced2_owned = true;
 	}
 
@@ -219,8 +220,8 @@ GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 		reduced1_owned = false;
 	}
 
-	GRB_TRY(refine_mr_with_grammar(&reduced2, under_approx, default_paths, IDR_ALL,
-								   &final_paths, valueflow, filter_empty));
+	GRB_TRY(refine_mr_with_grammar(&final_paths, &reduced2, under_approx,
+								   default_paths, IDR_ALL, valueflow, filter_empty));
 
 	*result = final_paths;
 	final_paths = NULL;

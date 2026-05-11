@@ -29,7 +29,7 @@ void print_usage(const char *prog) {
 			prog);
 }
 
-IdrGrammarType grammar_name_to_type(const char *grammar) {
+static IdrGrammarType grammar_name_to_type(const char *grammar) {
 	if (strcmp(grammar, "default") == 0) {
 		return IDR_DEFAULT;
 	}
@@ -60,7 +60,7 @@ IdrGrammarType grammar_name_to_type(const char *grammar) {
 	return IDR_UNKNOWN;
 }
 
-int parse_args(int argc, char *argv[], Args *out) {
+int parse_args(Args *out, int argc, char *argv[]) {
 	const char *grammar_str = NULL;
 	const char *graph_file_path = NULL;
 	const char *output_path = NULL;

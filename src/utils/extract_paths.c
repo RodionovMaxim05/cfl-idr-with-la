@@ -5,7 +5,7 @@
 
 #include "internal/grb_utils.h"
 
-GrB_Info extract_non_trivial_paths(GrB_Matrix paths, GrB_Matrix *result) {
+GrB_Info extract_non_trivial_paths(GrB_Matrix *out, GrB_Matrix paths) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Index *rows = NULL;
@@ -30,7 +30,7 @@ GrB_Info extract_non_trivial_paths(GrB_Matrix paths, GrB_Matrix *result) {
 
 	for (GrB_Index k = 0; k < nvals; k++) {
 		if (rows[k] != cols[k]) {
-			GRB_TRY(GrB_Matrix_setElement_BOOL(*result, true, rows[k], cols[k]));
+			GRB_TRY(GrB_Matrix_setElement_BOOL(*out, true, rows[k], cols[k]));
 		}
 	}
 

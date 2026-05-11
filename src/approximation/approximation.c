@@ -16,8 +16,8 @@
 #include "utils/extract_paths.h"
 #include "valueflow_approx.h"
 
-static GrB_Info process_under_approx_component(IdrGraph *comp, GrB_Index *vmap,
-											   GrB_Matrix result, bool valueflow) {
+static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp,
+											   GrB_Index *vmap, bool valueflow) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
@@ -35,7 +35,7 @@ static GrB_Info process_under_approx_component(IdrGraph *comp, GrB_Index *vmap,
 		goto cleanup;
 	}
 
-	GRB_TRY(idr_graph_get_adj_matrices(comp, &adj_matrices));
+	GRB_TRY(idr_graph_get_adj_matrices(&adj_matrices, comp));
 
 	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
 	if (!paths) {
@@ -48,11 +48,11 @@ static GrB_Info process_under_approx_component(IdrGraph *comp, GrB_Index *vmap,
 								 grammar.rules, grammar.rules_count, msg, 0));
 
 	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
-	GRB_TRY(extract_non_trivial_paths(paths[0], &comp_result));
+	GRB_TRY(extract_non_trivial_paths(&comp_result, paths[0]));
 
 	if (valueflow) {
-		GRB_TRY(apply_valueflow_under_approx(paths, adj_matrices, grammar, comp,
-											 &comp_result));
+		GRB_TRY(apply_valueflow_under_approx(&comp_result, paths, adj_matrices,
+											 grammar, comp));
 	}
 
 	GrB_Index nnz = 0;
@@ -100,8 +100,8 @@ GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
 										   &comp_count));
 
 	for (GrB_Index c = 0; c < comp_count; c++) {
-		info = process_under_approx_component(&components[c], vertex_maps[c],
-											  *result, valueflow);
+		info = process_under_approx_component(*result, &components[c],
+											  vertex_maps[c], valueflow);
 		idr_graph_free(&components[c]);
 		free(vertex_maps[c]);
 		if (info != GrB_SUCCESS) {
@@ -129,18 +129,18 @@ GrB_Info idr_get_over_approx(GrB_Matrix *result, const IdrGraph *graph,
 	GrB_Matrix mr_result = NULL;
 
 	if (under_approx == NULL) {
-		GRB_TRY(mutual_refinement(graph, grammar_type, result, valueflow,
+		GRB_TRY(mutual_refinement(result, graph, grammar_type, valueflow,
 								  filter_empty, &cache));
 		goto cleanup;
 	}
 
 	// Collapse mutually reachable vertices
-	GRB_TRY(condensate_from_under_approx(graph, under_approx, &cr));
+	GRB_TRY(condensate_from_under_approx(&cr, graph, under_approx));
 
-	GRB_TRY(mutual_refinement(&cr.condensed_graph, grammar_type, &mr_result,
+	GRB_TRY(mutual_refinement(&mr_result, &cr.condensed_graph, grammar_type,
 							  valueflow, filter_empty, &cache));
 
-	GRB_TRY(expand_result(mr_result, cr.components, graph->n, result));
+	GRB_TRY(expand_result(result, mr_result, cr.components, graph->n));
 
 cleanup:
 	GrB_Matrix_free(&mr_result);

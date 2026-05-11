@@ -10,13 +10,13 @@ typedef struct {
 	GrB_Matrix scc_reach;
 } SccResult;
 
-GrB_Info build_adjacency(const IdrGraph *graph, GrB_Matrix *adj_out);
+GrB_Info build_adjacency(GrB_Matrix *out, const IdrGraph *graph);
 
-GrB_Info compute_sccs(const IdrGraph *graph, GrB_Matrix adj, SccResult *out);
+GrB_Info compute_sccs(SccResult *out, const IdrGraph *graph, GrB_Matrix adj);
 
 void scc_result_free(SccResult *r);
 
 bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n);
 
-GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
-						 IdrGraph *out);
+GrB_Info remove_not_path(IdrGraph *out, const IdrGraph *graph,
+						 GrB_Matrix over_approx);

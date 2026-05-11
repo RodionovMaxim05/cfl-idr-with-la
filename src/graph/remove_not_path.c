@@ -7,7 +7,7 @@
 
 #include "internal/grb_utils.h"
 
-GrB_Info build_adjacency(const IdrGraph *graph, GrB_Matrix *adj_out) {
+GrB_Info build_adjacency(GrB_Matrix *out, const IdrGraph *graph) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Matrix adj = NULL;
 
@@ -31,7 +31,7 @@ GrB_Info build_adjacency(const IdrGraph *graph, GrB_Matrix *adj_out) {
 		GRB_TRY(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->normal, NULL));
 	}
 
-	*adj_out = adj;
+	*out = adj;
 	adj = NULL;
 
 cleanup:
@@ -39,7 +39,7 @@ cleanup:
 	return info;
 }
 
-GrB_Info compute_sccs(const IdrGraph *graph, GrB_Matrix adj, SccResult *out) {
+GrB_Info compute_sccs(SccResult *out, const IdrGraph *graph, GrB_Matrix adj) {
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 	GrB_Vector scc_vec = NULL;
@@ -215,8 +215,8 @@ bool is_all_pairs(GrB_Matrix over_approx, GrB_Index n) {
 	return nnz_approx >= (n * n);
 }
 
-GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
-						 IdrGraph *out) {
+GrB_Info remove_not_path(IdrGraph *out, const IdrGraph *graph,
+						 GrB_Matrix over_approx) {
 	GrB_Info info = GrB_SUCCESS;
 
 	SccResult sr = {0};
@@ -238,10 +238,10 @@ GrB_Info remove_not_path(const IdrGraph *graph, GrB_Matrix over_approx,
 		goto build_output;
 	}
 
-	GRB_TRY(build_adjacency(graph, &adj));
+	GRB_TRY(build_adjacency(&adj, graph));
 
 	// Calculating SCC
-	GRB_TRY(compute_sccs(graph, adj, &sr));
+	GRB_TRY(compute_sccs(&sr, graph, adj));
 	GrB_Index n_scc = sr.n_scc;
 
 	// Build selection matrix S (n × n_scc): S[i][sr.scc_ids[i]] = true

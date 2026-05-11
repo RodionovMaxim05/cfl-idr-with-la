@@ -7,5 +7,6 @@
 #include "symbol_list.h"
 #include "terminal/terminal_format.h"
 
-GrB_Info get_idr_graph(GraphMatrices *gm, const SymbolList *symbol_list, GrB_Index n,
-					   const TerminalFormat *fmt, IdrGraph *out);
+GrB_Info get_idr_graph(IdrGraph *out, GraphMatrices *gm,
+					   const SymbolList *symbol_list, GrB_Index n,
+					   const TerminalFormat *fmt);

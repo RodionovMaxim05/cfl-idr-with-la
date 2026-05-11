@@ -6,8 +6,8 @@
 #include "internal/grb_utils.h"
 #include "remove_not_path.h"
 
-static GrB_Info get_scc_selector(GrB_Index n, GrB_Index n_scc,
-								 const GrB_Index *scc_ids, GrB_Matrix *S_out) {
+static GrB_Info get_scc_selector(GrB_Matrix *S_out, GrB_Index n, GrB_Index n_scc,
+								 const GrB_Index *scc_ids) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Matrix S = NULL;
 
@@ -37,8 +37,8 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	GrB_Matrix tmp_m = NULL;
 	SccResult scc = {0};
 
-	GRB_TRY(build_adjacency(graph, &adj));
-	GRB_TRY(compute_sccs(graph, adj, &scc));
+	GRB_TRY(build_adjacency(&adj, graph));
+	GRB_TRY(compute_sccs(&scc, graph, adj));
 	GrB_Index n_scc = scc.n_scc;
 	GrB_Index n = graph->n;
 
@@ -59,7 +59,7 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	}
 
 	// Mapping nodes to SCC space
-	GRB_TRY(get_scc_selector(n, n_scc, scc.scc_ids, &scc_selector));
+	GRB_TRY(get_scc_selector(&scc_selector, n, n_scc, scc.scc_ids));
 
 	GRB_TRY(GrB_Vector_new(&scc_sources, GrB_BOOL, n_scc));
 	GRB_TRY(GrB_Vector_new(&scc_sinks, GrB_BOOL, n_scc));
@@ -157,8 +157,8 @@ cleanup:
 	return info;
 }
 
-GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
-							  GrB_Matrix *filtered_out) {
+GrB_Info filter_bracket_paths(GrB_Matrix *out, const IdrGraph *graph,
+							  GrB_Matrix paths) {
 	GrB_Info info = GrB_SUCCESS;
 
 	GrB_Matrix scc_selector = NULL;
@@ -170,12 +170,12 @@ GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
 	SccResult scc = {0};
 	GrB_Index n = graph->n;
 
-	GRB_TRY(build_adjacency(graph, &adj));
-	GRB_TRY(compute_sccs(graph, adj, &scc));
+	GRB_TRY(build_adjacency(&adj, graph));
+	GRB_TRY(compute_sccs(&scc, graph, adj));
 	GrB_Index n_scc = scc.n_scc;
 
 	// Expanding SCC reachability to all nodes
-	GRB_TRY(get_scc_selector(n, n_scc, scc.scc_ids, &scc_selector));
+	GRB_TRY(get_scc_selector(&scc_selector, n, n_scc, scc.scc_ids));
 
 	GRB_TRY(GrB_Matrix_new(&scc_tmp, GrB_BOOL, n, n_scc));
 	GRB_TRY(GrB_Matrix_new(&node_reach, GrB_BOOL, n, n));
@@ -211,10 +211,10 @@ GrB_Info filter_bracket_paths(const IdrGraph *graph, GrB_Matrix paths,
 	}
 
 	// Leave only those paths that were in original set
-	// filtered = Combined & paths
-	GRB_TRY(GrB_Matrix_new(filtered_out, GrB_BOOL, n, n));
-	GRB_TRY(GrB_eWiseMult(*filtered_out, NULL, NULL, GrB_LAND, bracket_reachable,
-						  paths, NULL));
+	// out = combined & paths
+	GRB_TRY(GrB_Matrix_new(out, GrB_BOOL, n, n));
+	GRB_TRY(
+		GrB_eWiseMult(*out, NULL, NULL, GrB_LAND, bracket_reachable, paths, NULL));
 
 cleanup:
 	GrB_Matrix_free(&scc_selector);
