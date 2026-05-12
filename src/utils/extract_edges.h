@@ -1,6 +1,6 @@
 #pragma once
 
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 
 /**
  * @brief Specifies a source-target vertex pair for on-demand CFL-reachability

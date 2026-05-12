@@ -3,7 +3,7 @@
 #include <LAGraphX.h>
 
 #include "cfl_idr.h"
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
@@ -45,7 +45,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GrB_Index *cols = NULL;
 	MRGrammar_t grammar = {0};
 
-	grammar = dyck_grammar(comp->n_par, comp->n_bra, comp->normal != NULL);
+	grammar = get_dyck_grammar(comp->n_par, comp->n_bra, comp->normal != NULL);
 	if (!grammar.rules) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "cfl_idr.h"
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 #include "mr_cache.h"
 #include "utils/extract_edges.h"
 

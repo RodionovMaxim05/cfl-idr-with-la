@@ -1,6 +1,7 @@
 #pragma once
 
-#include "grammar/grammar.h"
+#include "cfl_idr.h"
+#include "grammar/grammar_analysis_utils.h"
 
 /**
  * @brief Default output directory for result files.

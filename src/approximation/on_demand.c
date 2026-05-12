@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "cfl_idr.h"
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 #include "graph/condensate_graph.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"

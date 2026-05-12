@@ -161,14 +161,3 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 
 	return gr;
 }
-
-void grammar_free(MRGrammar_t *gr) {
-	if (!gr) {
-		return;
-	}
-	free(gr->rules);
-	gr->rules = NULL;
-	gr->rules_count = 0;
-	gr->terms_count = 0;
-	gr->nonterms_count = 0;
-}

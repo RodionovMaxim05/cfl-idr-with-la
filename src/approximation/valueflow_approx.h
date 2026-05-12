@@ -3,7 +3,7 @@
 #include <GraphBLAS.h>
 
 #include "cfl_idr.h"
-#include "grammar/grammar.h"
+#include "grammar/grammar_analysis_utils.h"
 
 /**
  * @brief Applies value-flow specific constraints to an under-approximation result.
