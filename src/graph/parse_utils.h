@@ -22,7 +22,7 @@
  * @param[out] out       Output `IdrGraph` structure to populate. Must be valid and
  *                       uninitialized. On success, contains the loaded graph.
  * @param[in]  filename  Path to the graph definition file. Must be a readable text
- * file in the expected format.
+ *                       file in the expected format.
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */

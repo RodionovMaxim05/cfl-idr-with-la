@@ -64,13 +64,13 @@ GrB_Index idr_graph_count_edges(const IdrGraph *graph);
  * pair, the corresponding matrices are freed.
  *
  * @param[out] out            Output graph structure to populate. Must point to valid
- * memory.
+ *                            memory.
  * @param[in]  input_matrices Array of input `GrB_Matrix` objects in the order
- * described above.
+ *                            described above.
  * @param[in]  n_par          Number of parenthesis types in the input.
  * @param[in]  n_bra          Number of bracket types in the input.
  * @param[in]  has_normal     `true` if the input array includes a normal (epsilon)
- * matrix.
+ *                            matrix.
  * @param[in]  n              Number of vertices in the graph.
  * @param[in]  filter_empty   If `true`, exclude empty parenthesis/bracket pairs.
  *

@@ -55,8 +55,7 @@ GrB_Info mutual_refinement(GrB_Matrix *result, const IdrGraph *graph,
  * - Each component is optionally reduced via `remove_not_path` to eliminate
  *   vertices not lying on any path between the local source/target.
  *
- * @param[out] result          Global output matrix (global_n × global_n,
- * `GrB_BOOL`).
+ * @param[out] result        Global output matrix (global_n × global_n, `GrB_BOOL`).
  * @param[in]  components    Array of `comp_count` component graphs.
  * @param[in]  vertex_maps   Array of vertex mappings: `vertex_maps[c][local_idx]`
  *                           maps to global vertex index.

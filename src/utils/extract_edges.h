@@ -38,8 +38,9 @@ typedef struct {
  *      `(mid, j)` via `C` exist, then pushes unvisited subproblems onto the stack.
  *
  * @param[out] out          Array of `grammar.terms_count` output matrices
- * (`GrB_BOOL`, n × n). Each `out[t]` receives edges labeled with terminal `t`. Must
- * be pre-allocated by caller or set to `NULL` pointers.
+ *                          (`GrB_BOOL`, n × n). Each `out[t]` receives edges labeled
+ *                          with terminal `t`. Must be pre-allocated by caller or set
+ *                          to `NULL` pointers.
  * @param[in]  paths        Array of `grammar.nonterms_count` CFL-reachability result
  *                          matrices from `LAGraph_CFL_AllPaths`.
  * @param[in]  adj_matrices Input adjacency matrices for each terminal symbol.
