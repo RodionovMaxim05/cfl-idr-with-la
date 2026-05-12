@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "grammar/grammar.h"
 #include "grammar/grammar_analysis_utils.h"
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
@@ -299,7 +298,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 
 	if (grammar_type == IDR_PROJECT || grammar_type == IDR_ALL) {
 		MRGrammar_t project_grammar =
-			dyck_project_grammar(beta_graph.n_par, beta_graph.n_bra, has_normal);
+			get_project_grammar(beta_graph.n_par, beta_graph.n_bra, has_normal);
 		if (!project_grammar.rules) {
 			info = GrB_OUT_OF_MEMORY;
 			goto cleanup;
@@ -337,9 +336,8 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 		const IdrGraph *cur_graph = final_graph;
 
 		for (int64_t ex_bra = 0; ex_bra < cur_graph->n_bra; ex_bra++) {
-			MRGrammar_t exclude_grammar = dyck_alpha_grammar_k_parity_exclude(
-				cur_graph->n_par, cur_graph->n_bra, has_normal,
-				/*k=*/2, ex_bra);
+			MRGrammar_t exclude_grammar = get_exclude_grammar(
+				cur_graph->n_par, cur_graph->n_bra, has_normal, ex_bra);
 			if (!exclude_grammar.rules) {
 				info = GrB_OUT_OF_MEMORY;
 				goto cleanup;

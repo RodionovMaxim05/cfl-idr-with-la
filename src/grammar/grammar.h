@@ -7,22 +7,7 @@
 #include <stdlib.h>
 
 #include "cfl_idr.h"
-
-#define NT_START 0
-
-/**
- * @brief Grammar specification for CFL-reachability analysis in mutual refinement.
- *
- * Encodes a weighted context-free grammar in WCNF format suitable for
- * `LAGraph_CFL_AllPaths`. Contains counts for nonterminals, terminals, and rules,
- * plus a pointer to the rule array.
- */
-typedef struct {
-	int64_t nonterms_count;	  // Number of nonterminal symbols
-	int64_t terms_count;	  // Number of terminal symbols (edge labels)
-	int64_t rules_count;	  // Number of production rules
-	LAGraph_rule_WCNF *rules; // Array of grammar rules in WCNF format
-} MRGrammar_t;
+#include "grammar_analysis_utils.h"
 
 /**
  * Represents the states for the "valid endpoints" condition in structured equality
@@ -253,12 +238,3 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
  */
 MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 										  bool has_normal, int64_t k);
-
-/**
- * @brief Frees all resources owned by an `MRGrammar_t`.
- *
- * Deallocates the `rules` array via `free()` and zero-initializes the structure.
- *
- * @param[in] gr  Grammar to free. May be `NULL` (no-op).
- */
-void grammar_free(MRGrammar_t *gr);
