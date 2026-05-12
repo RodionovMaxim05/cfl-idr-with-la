@@ -26,12 +26,12 @@
  * The output satisfies: `out[u][v] = true` iff there exists a path from `u` to `v`
  * in `paths` that includes at least one properly ordered store-load pair.
  *
- * @param[out] out     Newly allocated `GrB_Matrix` (n × n, `GrB_BOOL`) holding
- *                     the filtered reachability result.
- * @param[in]  graph   Input `IdrGraph` containing bracket-labeled edges.
- *                     Must not be `NULL`.
- * @param[in]  paths   Input reachability matrix to filter (`GrB_BOOL`, n × n).
- *                     Must not be `NULL`.
+ * @param[out] out    Newly allocated `GrB_Matrix` (n × n, `GrB_BOOL`) holding the
+ *                    filtered reachability result.
+ * @param[in]  graph  Input `IdrGraph` containing bracket-labeled edges. Must not be
+ *                    `NULL`.
+ * @param[in]  paths  Input reachability matrix to filter (`GrB_BOOL`, n × n). Must
+ *                    not be `NULL`.
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
