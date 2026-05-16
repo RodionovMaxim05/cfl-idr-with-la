@@ -81,12 +81,16 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
 						 bool filter_empty);
 
 /**
- * @brief Extracts all adjacency matrices from an `IdrGraph` into a flat array.
+ * @brief Collects non-terminal and terminal adjacency matrices from an `IdrGraph`
+ * into a flat array.
  *
- * Allocates a new array of `GrB_Matrix` pointers containing references to the
- * graph's internal matrices in the canonical order:
- * - `open_par[0]`, `close_par[0]`, ..., `open_par[n_par-1]`, `close_par[n_par-1]`
- * - `open_bra[0]`, `close_bra[0]`, ..., `open_bra[n_bra-1]`, `close_bra[n_bra-1]`
+ * Allocates a new array of `GrB_Matrix`. The first `nonterms_count` elements are
+ * newly allocated `GrB_BOOL` matrices. The remaining elements contain direct
+ * references to the graph's internal terminal matrices in the following order:
+ * - `open_par[0]`, `open_par[1]`, ..., `open_par[n_par-1]`
+ * - `close_par[0]`, `close_par[1]`, ..., `close_par[n_par-1]`
+ * - `open_bra[0]`, `open_bra[1]`, ..., `open_bra[n_bra-1]`
+ * - `close_bra[0]`, `close_bra[1]`, ..., `close_bra[n_bra-1]`
  * - `normal` (if present)
  *
  * The caller is responsible for freeing the returned array with `free()`, but
@@ -94,10 +98,13 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
  *
  * @param[out] out    Pointer to receive the allocated array of matrices.
  * @param[in]  graph  Source graph. Must not be `NULL`.
+ * @param[in]  nonterms_count Number of non-terminal matrices to allocate at the
+ * start of the array.
  *
  * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` if allocation fails.
  */
-GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph);
+GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
+									int64_t nonterms_count);
 
 /**
  * @brief Constructs a unified boolean adjacency matrix from an `IdrGraph`.

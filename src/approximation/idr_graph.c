@@ -96,7 +96,11 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
 	out->open_bra = NULL;
 	out->close_bra = NULL;
 
-	int64_t bra_base = 2 * n_par;
+	int64_t open_par_base = 0;
+	int64_t close_par_base = n_par;
+	int64_t open_bra_base = 2 * n_par;
+	int64_t close_bra_base = 2 * n_par + n_bra;
+
 	int64_t actual_n_par = 0;
 	int64_t actual_n_bra = 0;
 
@@ -109,13 +113,14 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
 		// Build with empty pair filtering
 
 		for (int64_t i = 0; i < n_par; i++) {
-			if (pair_nonempty(input_matrices[2 * i], input_matrices[2 * i + 1])) {
+			if (pair_nonempty(input_matrices[open_par_base + i],
+							  input_matrices[close_par_base + i])) {
 				actual_n_par++;
 			}
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
-			if (pair_nonempty(input_matrices[bra_base + 2 * i],
-							  input_matrices[bra_base + 2 * i + 1])) {
+			if (pair_nonempty(input_matrices[open_bra_base + i],
+							  input_matrices[close_bra_base + i])) {
 				actual_n_bra++;
 			}
 		}
@@ -144,36 +149,37 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
 		// Quick build without filtration
 
 		for (int64_t i = 0; i < n_par; i++) {
-			out->open_par[i] = input_matrices[2 * i];
-			out->close_par[i] = input_matrices[2 * i + 1];
+			out->open_par[i] = input_matrices[open_par_base + i];
+			out->close_par[i] = input_matrices[close_par_base + i];
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
-			out->open_bra[i] = input_matrices[bra_base + 2 * i];
-			out->close_bra[i] = input_matrices[bra_base + 2 * i + 1];
+			out->open_bra[i] = input_matrices[open_bra_base + i];
+			out->close_bra[i] = input_matrices[close_bra_base + i];
 		}
 	} else {
 		// Build with empty pair filtering
 
 		int64_t p_idx = 0, b_idx = 0;
 		for (int64_t i = 0; i < n_par; i++) {
-			if (pair_nonempty(input_matrices[2 * i], input_matrices[2 * i + 1])) {
-				out->open_par[p_idx] = input_matrices[2 * i];
-				out->close_par[p_idx] = input_matrices[2 * i + 1];
+			if (pair_nonempty(input_matrices[open_par_base + i],
+							  input_matrices[close_par_base + i])) {
+				out->open_par[p_idx] = input_matrices[open_par_base + i];
+				out->close_par[p_idx] = input_matrices[close_par_base + i];
 				p_idx++;
 			} else {
-				GrB_Matrix_free(&input_matrices[2 * i]);
-				GrB_Matrix_free(&input_matrices[2 * i + 1]);
+				GrB_Matrix_free(&input_matrices[open_par_base + i]);
+				GrB_Matrix_free(&input_matrices[close_par_base + i]);
 			}
 		}
 		for (int64_t i = 0; i < n_bra; i++) {
-			if (pair_nonempty(input_matrices[bra_base + 2 * i],
-							  input_matrices[bra_base + 2 * i + 1])) {
-				out->open_bra[b_idx] = input_matrices[bra_base + 2 * i];
-				out->close_bra[b_idx] = input_matrices[bra_base + 2 * i + 1];
+			if (pair_nonempty(input_matrices[open_bra_base + i],
+							  input_matrices[close_bra_base + i])) {
+				out->open_bra[b_idx] = input_matrices[open_bra_base + i];
+				out->close_bra[b_idx] = input_matrices[close_bra_base + i];
 				b_idx++;
 			} else {
-				GrB_Matrix_free(&input_matrices[bra_base + 2 * i]);
-				GrB_Matrix_free(&input_matrices[bra_base + 2 * i + 1]);
+				GrB_Matrix_free(&input_matrices[open_bra_base + i]);
+				GrB_Matrix_free(&input_matrices[close_bra_base + i]);
 			}
 		}
 	}
@@ -193,23 +199,51 @@ cleanup:
 	return info;
 }
 
-GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph) {
+GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
+									int64_t nonterms_count) {
+	int64_t n_par = graph->n_par;
+	int64_t n_bra = graph->n_bra;
+	bool has_normal = (graph->normal != NULL);
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
-	GrB_Matrix *adj = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
+	size_t symbols_amount = (size_t)(terms_count + nonterms_count);
+	GrB_Matrix *adj = (GrB_Matrix *)malloc(symbols_amount * sizeof(GrB_Matrix));
 	if (!adj) {
 		return GrB_OUT_OF_MEMORY;
 	}
 
-	for (int64_t i = 0; i < graph->n_par; i++) {
-		adj[2 * i] = graph->open_par[i];
-		adj[2 * i + 1] = graph->close_par[i];
+	for (int64_t i = 0; i < nonterms_count; i++) {
+		GrB_Info info = GrB_Matrix_new(&adj[i], GrB_BOOL, graph->n, graph->n);
+		if (info != GrB_SUCCESS) {
+			for (int64_t j = 0; j < i; j++) {
+				GrB_free(&adj[j]);
+			}
+			free((void *)adj);
+			return info;
+		}
 	}
-	for (int64_t i = 0; i < graph->n_bra; i++) {
-		adj[2 * graph->n_par + 2 * i] = graph->open_bra[i];
-		adj[2 * graph->n_par + 2 * i + 1] = graph->close_bra[i];
+
+	int64_t t_offset = nonterms_count;
+
+	for (int64_t i = 0; i < n_par; i++) {
+		adj[t_offset + i] = graph->open_par[i];
 	}
-	if (graph->normal != NULL) {
-		adj[2 * graph->n_par + 2 * graph->n_bra] = graph->normal;
+	t_offset += n_par;
+	for (int64_t i = 0; i < n_par; i++) {
+		adj[t_offset + i] = graph->close_par[i];
+	}
+	t_offset += n_par;
+
+	for (int64_t i = 0; i < n_bra; i++) {
+		adj[t_offset + i] = graph->open_bra[i];
+	}
+	t_offset += n_bra;
+	for (int64_t i = 0; i < n_bra; i++) {
+		adj[t_offset + i] = graph->close_bra[i];
+	}
+	t_offset += n_bra;
+
+	if (has_normal) {
+		adj[t_offset] = graph->normal;
 	}
 
 	*out = adj;

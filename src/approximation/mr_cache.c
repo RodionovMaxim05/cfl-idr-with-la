@@ -82,7 +82,7 @@ static void free_step_result(MRStepResult *r) {
 	if (!r || !r->matrices) {
 		return;
 	}
-	LAGraph_CFL_AllPaths_free_outputs(r->matrices, r->count, &r->all_paths_t);
+	LAGraph_CFL_AllPaths_adv_free_outputs(r->matrices, r->count, &r->all_paths_t);
 	GrB_free(&r->all_paths_t);
 	memset(r, 0, sizeof(*r));
 }

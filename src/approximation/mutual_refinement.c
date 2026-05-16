@@ -123,7 +123,7 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	uint64_t key = get_graph_cache_hash(graph);
 	const MRStepResult *hit = mr_cache_lookup(cache, key, grammar_tag);
 
-	GRB_TRY(idr_graph_collect_matrices(&adj, graph));
+	GRB_TRY(idr_graph_collect_matrices(&adj, graph, grammar.nonterms_count));
 
 	if (hit) {
 		GRB_TRY(extract_edges_from_outputs(*out_edges, hit->matrices, adj, grammar,
@@ -141,15 +141,16 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		goto cleanup;
 	}
 
-	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
+	paths = (GrB_Matrix *)calloc(grammar.nonterms_count + grammar.terms_count,
+								 sizeof(GrB_Matrix));
 	if (!paths) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths(paths, &all_paths_t, adj, grammar.terms_count,
-								 grammar.nonterms_count, grammar.rules,
-								 grammar.rules_count, msg, 0));
+	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj,
+									 grammar.terms_count + grammar.nonterms_count,
+									 grammar.rules, grammar.rules_count, msg, 15));
 
 	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, adj, grammar, graph->n,
 									   target_path));
@@ -157,15 +158,20 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 	GRB_TRY(extract_non_trivial_paths(out_reachability, paths[0]));
 
-	mr_cache_insert(cache, key, grammar_tag, paths, grammar.nonterms_count,
-					all_paths_t);
+	mr_cache_insert(cache, key, grammar_tag, paths,
+					grammar.nonterms_count + grammar.terms_count, all_paths_t);
 
 	if (target_path) {
 		*target_found = matrix_has_path_udt(paths[0], target_path);
 	}
 
 cleanup:
-	free((void *)adj);
+	if (adj) {
+		for (int i = 0; i < grammar.nonterms_count; i++) {
+			GrB_free(&adj[i]);
+		}
+		free((void *)adj);
+	}
 	return info;
 }
 

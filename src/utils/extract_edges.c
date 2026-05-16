@@ -81,17 +81,25 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 		int32_t A = g->rules[r].nonterm;
 		int32_t prod_A = g->rules[r].prod_A;
 		int32_t prod_B = g->rules[r].prod_B;
+		uint32_t count = g->rules[r].indexed_count;
+		uint32_t flags = g->rules[r].indexed;
 
 		if (prod_A == -1) {
 			// epsilon - ignore
 			continue;
 		}
-		if (prod_B == -1) {
-			// Terminal rule
-			idx[A].term_count++;
-		} else {
-			// Binary rule
-			idx[A].binary_count++;
+
+		int32_t n = (count > 0) ? (int32_t)count : 1;
+
+		for (int32_t k = 0; k < n; k++) {
+			int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
+			if (prod_B == -1) {
+				// Terminal rule
+				idx[cur_A].term_count++;
+			} else {
+				// Binary rule
+				idx[cur_A].binary_count++;
+			}
 		}
 	}
 
@@ -120,16 +128,29 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 		int32_t A = g->rules[r].nonterm;
 		int32_t prod_A = g->rules[r].prod_A;
 		int32_t prod_B = g->rules[r].prod_B;
+		uint32_t count = g->rules[r].indexed_count;
+		uint32_t flags = g->rules[r].indexed;
 
 		if (prod_A == -1) {
 			continue;
 		}
-		if (prod_B == -1) {
-			idx[A].term_rules[idx[A].term_count++].term = prod_A;
-		} else {
-			BinaryRule *br = &idx[A].binary_rules[idx[A].binary_count++];
-			br->B = prod_A;
-			br->C = prod_B;
+
+		int32_t n = (count > 0) ? (int32_t)count : 1;
+
+		for (int32_t k = 0; k < n; k++) {
+			int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
+			int32_t cur_pA = prod_A + ((flags & LAGraph_EWNCF_INDEX_PROD_A) ? k : 0);
+			int32_t cur_pB = (prod_B != -1 && (flags & LAGraph_EWNCF_INDEX_PROD_B))
+								 ? prod_B + k
+								 : prod_B;
+
+			if (cur_pB == -1) {
+				idx[cur_A].term_rules[idx[cur_A].term_count++].term = cur_pA;
+			} else {
+				BinaryRule *br = &idx[cur_A].binary_rules[idx[cur_A].binary_count++];
+				br->B = cur_pA;
+				br->C = cur_pB;
+			}
 		}
 	}
 
@@ -267,7 +288,9 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 					GrB_Matrix_extractElement_BOOL(&has_edge, adj_matrices[term], i,
 												   j);
 					if (has_edge) {
-						GRB_TRY(GrB_Matrix_setElement_BOOL(out[term], true, i, j));
+						int32_t term_local = term - (int32_t)grammar.nonterms_count;
+						GRB_TRY(
+							GrB_Matrix_setElement_BOOL(out[term_local], true, i, j));
 					}
 				}
 			} else {

@@ -51,17 +51,18 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 		goto cleanup;
 	}
 
-	GRB_TRY(idr_graph_collect_matrices(&adj_matrices, comp));
+	GRB_TRY(idr_graph_collect_matrices(&adj_matrices, comp, grammar.nonterms_count));
 
-	paths = (GrB_Matrix *)calloc(grammar.nonterms_count, sizeof(GrB_Matrix));
+	paths = (GrB_Matrix *)calloc(grammar.nonterms_count + grammar.terms_count,
+								 sizeof(GrB_Matrix));
 	if (!paths) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths(paths, &all_paths_t, adj_matrices,
-								 grammar.terms_count, grammar.nonterms_count,
-								 grammar.rules, grammar.rules_count, msg, 0));
+	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj_matrices,
+									 grammar.terms_count + grammar.nonterms_count,
+									 grammar.rules, grammar.rules_count, msg, 15));
 
 	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
 	GRB_TRY(extract_non_trivial_paths(&comp_result, paths[0]));
@@ -91,13 +92,19 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	}
 
 cleanup:
+	if (adj_matrices) {
+		for (int i = 0; i < (grammar.nonterms_count + grammar.terms_count); i++) {
+			GrB_free(&adj_matrices[i]);
+		}
+		free((void *)adj_matrices);
+	}
 	free(rows);
 	free(cols);
 	GrB_Matrix_free(&comp_result);
-	LAGraph_CFL_AllPaths_free_outputs(paths, grammar.nonterms_count, &all_paths_t);
+	LAGraph_CFL_AllPaths_adv_free_outputs(
+		paths, grammar.nonterms_count + grammar.terms_count, &all_paths_t);
 	GrB_free(&all_paths_t);
 	grammar_free(&grammar);
-	free((void *)adj_matrices);
 	return info;
 }
 
