@@ -10,15 +10,15 @@
 /**
  * @brief Grammar specification for CFL-reachability analysis in mutual refinement.
  *
- * Encodes a weighted context-free grammar in WCNF format suitable for
+ * Encodes a weighted context-free grammar in EWCNF format suitable for
  * `LAGraph_CFL_AllPaths`. Contains counts for nonterminals, terminals, and rules,
  * plus a pointer to the rule array.
  */
 typedef struct {
-	int64_t nonterms_count;	  // Number of nonterminal symbols
-	int64_t terms_count;	  // Number of terminal symbols (edge labels)
-	int64_t rules_count;	  // Number of production rules
-	LAGraph_rule_WCNF *rules; // Array of grammar rules in WCNF format
+	int64_t nonterms_count;	   // Number of nonterminal symbols
+	int64_t terms_count;	   // Number of terminal symbols (edge labels)
+	int64_t rules_count;	   // Number of production rules
+	LAGraph_rule_EWCNF *rules; // Array of grammar rules in EWCNF format
 } MRGrammar_t;
 
 /**

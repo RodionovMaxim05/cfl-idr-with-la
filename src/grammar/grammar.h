@@ -24,6 +24,8 @@
 
 #define RSTATE_COUNT (int64_t)3
 
+#define TERM(t) ((int32_t)(nonterms_count + (t)))
+
 /**
  * @brief Allocates and initializes a new `MRGrammar_t` structure.
  *
@@ -37,7 +39,7 @@
 static inline MRGrammar_t make_grammar(int64_t rules_count, int64_t terms_count,
 									   int64_t nonterms_count) {
 	MRGrammar_t gr = {0};
-	gr.rules = malloc(rules_count * sizeof(LAGraph_rule_WCNF));
+	gr.rules = malloc(rules_count * sizeof(LAGraph_rule_EWCNF));
 	if (!gr.rules) {
 		return gr;
 	}
