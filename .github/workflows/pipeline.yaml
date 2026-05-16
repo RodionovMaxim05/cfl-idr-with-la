@@ -17,8 +17,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             clang-format clang-tidy \
-            cmake build-essential \
-            libgomp1 libomp-dev
+            cmake build-essential
 
       - name: Cache GraphBLAS
         id: cache-graphblas
@@ -32,7 +31,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/DrTimothyAldenDavis/GraphBLAS.git ~/graphblas
           cd ~/graphblas
-          cmake -B build -DGRAPHBLAS_COMPACT=1 -DGRAPHBLAS_USE_JIT=0 -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -DGRAPHBLAS_COMPACT=1 -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j$(nproc)
 
       - name: Install GraphBLAS
