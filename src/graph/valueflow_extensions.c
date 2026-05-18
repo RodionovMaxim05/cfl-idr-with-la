@@ -47,9 +47,6 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph) 
 	GRB_TRY(GrB_Vector_new(&v_has_close, GrB_BOOL, n));
 
 	for (int64_t i = 0; i < graph->n_bra; i++) {
-		GRB_TRY(GrB_Matrix_wait(graph->open_bra[i], GrB_MATERIALIZE));
-		GRB_TRY(GrB_Matrix_wait(graph->close_bra[i], GrB_MATERIALIZE));
-
 		// v_has_open[u] = true if exists edge u -(`[_i`)-> v
 		GRB_TRY(GrB_reduce(v_has_open, NULL, GrB_LOR, GrB_LOR_MONOID_BOOL,
 						   graph->open_bra[i], NULL));
