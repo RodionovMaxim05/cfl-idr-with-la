@@ -47,6 +47,7 @@ typedef struct {
 	GrB_Index i;
 	GrB_Index j;
 	int32_t A;
+	int32_t _pad;
 } VisitedKey;
 
 typedef struct {
@@ -251,7 +252,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		int32_t A = cur.nonterm;
 
 		// Hash table search
-		VisitedKey lk = {.i = i, .j = j, .A = A};
+		VisitedKey lk = {.i = i, .j = j, .A = A, ._pad = 0};
 		VisitedEntry *found;
 		HASH_FIND(hh, visited_ht, &lk, sizeof(VisitedKey), found);
 		if (found) {
@@ -312,8 +313,8 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 
 					// Only push if not already visited - avoids stacking the same
 					// pair multiple times
-					VisitedKey lkB = {i, mid, B};
-					VisitedKey lkC = {mid, j, C};
+					VisitedKey lkB = {i, mid, B, ._pad = 0};
+					VisitedKey lkC = {mid, j, C, ._pad = 0};
 					VisitedEntry *fB, *fC;
 					HASH_FIND(hh, visited_ht, &lkB, sizeof(VisitedKey), fB);
 					HASH_FIND(hh, visited_ht, &lkC, sizeof(VisitedKey), fC);

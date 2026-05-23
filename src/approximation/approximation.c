@@ -93,7 +93,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 
 cleanup:
 	if (adj_matrices) {
-		for (int i = 0; i < (grammar.nonterms_count + grammar.terms_count); i++) {
+		for (int i = 0; i < grammar.nonterms_count; i++) {
 			GrB_free(&adj_matrices[i]);
 		}
 		free((void *)adj_matrices);
