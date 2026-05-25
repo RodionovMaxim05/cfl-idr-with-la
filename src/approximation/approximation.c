@@ -153,7 +153,7 @@ GrB_Info idr_get_over_approx(GrB_Matrix *result, const IdrGraph *graph,
 
 	if (under_approx == NULL) {
 		GRB_TRY(mutual_refinement(result, graph, grammar_type, valueflow,
-								  filter_empty, &cache));
+								  filter_empty, NULL, &cache));
 		goto cleanup;
 	}
 
@@ -161,7 +161,7 @@ GrB_Info idr_get_over_approx(GrB_Matrix *result, const IdrGraph *graph,
 	GRB_TRY(condensate_from_under_approx(&cr, graph, under_approx));
 
 	GRB_TRY(mutual_refinement(&mr_result, &cr.condensed_graph, grammar_type,
-							  valueflow, filter_empty, &cache));
+							  valueflow, filter_empty, NULL, &cache));
 
 	GRB_TRY(expand_result(result, mr_result, cr.components, graph->n));
 
