@@ -34,13 +34,16 @@
  *                           via `apply_valueflow_over_approx`.
  * @param[in]  filter_empty  If `true`, remove parenthesis/bracket types where
  *                           either the opening or closing matrix is empty.
+ * @param[in]  target_path   Optional target path for on-demand analysis.
+ *                           Pass `NULL` for full all-pairs analysis.
  * @param[in]  cache         Cache for intermediate CFL-reachability results.
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
  */
 GrB_Info mutual_refinement(GrB_Matrix *result, const IdrGraph *graph,
 						   IdrGrammarType grammar_type, bool valueflow,
-						   bool filter_empty, MRCache *cache);
+						   bool filter_empty, const TargetPath *target_path,
+						   MRCache *cache);
 
 /**
  * @brief Runs mutual-refinement analysis on a pre-split set of graph components.
