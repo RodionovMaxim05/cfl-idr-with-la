@@ -434,8 +434,6 @@ cleanup:
 	idr_graph_free(&exclude_graph);
 	GrB_Matrix_free(&project_reach);
 	if (project_edges) {
-		int64_t beta_terms_count =
-			get_terms_count(beta_graph.n_par, beta_graph.n_bra, beta_graph.normal);
 		for (int64_t i = 0; i < beta_terms_count; i++) {
 			GrB_Matrix_free(&project_edges[i]);
 		}
