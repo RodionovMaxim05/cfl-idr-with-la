@@ -279,10 +279,10 @@ build_output:
 	out->close_par = graph->n_par
 						 ? (GrB_Matrix *)malloc(graph->n_par * sizeof(GrB_Matrix))
 						 : NULL;
-	out->open_bra = graph->n_par
+	out->open_bra = graph->n_bra
 						? (GrB_Matrix *)malloc(graph->n_bra * sizeof(GrB_Matrix))
 						: NULL;
-	out->close_bra = graph->n_par
+	out->close_bra = graph->n_bra
 						 ? (GrB_Matrix *)malloc(graph->n_bra * sizeof(GrB_Matrix))
 						 : NULL;
 

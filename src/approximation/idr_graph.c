@@ -282,31 +282,98 @@ GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
 GrB_Info idr_graph_to_adjacency(GrB_Matrix *out, const IdrGraph *graph) {
 	GrB_Info info = GrB_SUCCESS;
 	GrB_Matrix adj = NULL;
+	GrB_Index *row_indices = NULL;
+	GrB_Index *col_indices = NULL;
+	bool *edge_values = NULL;
+
+	GrB_Index total_nvals = 0;
+
+	// Count total number of non-zero elements in all matrices
+	for (int64_t i = 0; i < graph->n_par; i++) {
+		if (graph->open_par[i]) {
+			GrB_Index nv;
+			GRB_TRY(GrB_Matrix_nvals(&nv, graph->open_par[i]));
+			total_nvals += nv;
+		}
+		if (graph->close_par[i]) {
+			GrB_Index nv;
+			GRB_TRY(GrB_Matrix_nvals(&nv, graph->close_par[i]));
+			total_nvals += nv;
+		}
+	}
+	for (int64_t i = 0; i < graph->n_bra; i++) {
+		if (graph->open_bra[i]) {
+			GrB_Index nv;
+			GRB_TRY(GrB_Matrix_nvals(&nv, graph->open_bra[i]));
+			total_nvals += nv;
+		}
+		if (graph->close_bra[i]) {
+			GrB_Index nv;
+			GRB_TRY(GrB_Matrix_nvals(&nv, graph->close_bra[i]));
+			total_nvals += nv;
+		}
+	}
+	if (graph->normal) {
+		GrB_Index nv;
+		GRB_TRY(GrB_Matrix_nvals(&nv, graph->normal));
+		total_nvals += nv;
+	}
 
 	GRB_TRY(GrB_Matrix_new(&adj, GrB_BOOL, graph->n, graph->n));
 
+	if (total_nvals == 0) {
+		*out = adj;
+		return GrB_SUCCESS;
+	}
+
+	row_indices = malloc(total_nvals * sizeof(GrB_Index));
+	col_indices = malloc(total_nvals * sizeof(GrB_Index));
+	edge_values = malloc(total_nvals * sizeof(bool));
+	if (!row_indices || !col_indices || !edge_values) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
+
+	// Extract tuples from all submatrices into one buffer in a row
+	GrB_Index offset = 0;
+
+#define EXTRACT_TUPLES(matrix)                                                      \
+	do {                                                                            \
+		if (matrix) {                                                               \
+			GrB_Index nv;                                                           \
+			GRB_TRY(GrB_Matrix_nvals(&nv, matrix));                                 \
+			if (nv > 0) {                                                           \
+				GRB_TRY(GrB_Matrix_extractTuples_BOOL(                              \
+					&row_indices[offset], &col_indices[offset],                     \
+					&edge_values[offset], &nv, matrix));                            \
+				offset += nv;                                                       \
+			}                                                                       \
+		}                                                                           \
+	} while (0)
+
 	for (int64_t i = 0; i < graph->n_par; i++) {
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_par[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_par[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
+		EXTRACT_TUPLES(graph->open_par[i]);
+		EXTRACT_TUPLES(graph->close_par[i]);
 	}
-
 	for (int64_t i = 0; i < graph->n_bra; i++) {
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->open_bra[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
-		GRB_TRY(GrB_assign(adj, NULL, GrB_LOR, graph->close_bra[i], GrB_ALL, 0,
-						   GrB_ALL, 0, NULL));
+		EXTRACT_TUPLES(graph->open_bra[i]);
+		EXTRACT_TUPLES(graph->close_bra[i]);
 	}
+	EXTRACT_TUPLES(graph->normal);
 
-	if (graph->normal != NULL) {
-		GRB_TRY(GrB_eWiseAdd(adj, NULL, GrB_LOR, GrB_LOR, adj, graph->normal, NULL));
-	}
+#undef EXTRACT_TUPLES
+
+	// Construct the final matrix
+	GRB_TRY(GrB_Matrix_build_BOOL(adj, row_indices, col_indices, edge_values,
+								  total_nvals, GrB_LOR));
 
 	*out = adj;
 	adj = NULL;
 
 cleanup:
+	free(row_indices);
+	free(col_indices);
+	free(edge_values);
 	GrB_Matrix_free(&adj);
 	return info;
 }
