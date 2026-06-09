@@ -12,12 +12,15 @@
  *
  * Encodes a weighted context-free grammar in EWCNF format suitable for
  * `LAGraph_CFL_AllPaths`. Contains counts for nonterminals, terminals, and rules,
- * plus a pointer to the rule array.
+ * plus a pointer to the rule array. The `k` and `is_beta` fields together control
+ * how terminal matrices are laid out.
  */
 typedef struct {
-	int64_t nonterms_count;	   // Number of nonterminal symbols
-	int64_t terms_count;	   // Number of terminal symbols (edge labels)
-	int64_t rules_count;	   // Number of production rules
+	bool is_beta;			// If true, parentheses are grouped; otherwise brackets
+	int64_t k;				// Group size for terminal matrices
+	int64_t nonterms_count; // Number of nonterminal symbols
+	int64_t terms_count;	// Number of terminal symbols (edge labels)
+	int64_t rules_count;	// Number of production rules
 	LAGraph_rule_EWCNF *rules; // Array of grammar rules in EWCNF format
 } MRGrammar_t;
 

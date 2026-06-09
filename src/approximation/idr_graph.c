@@ -199,8 +199,34 @@ cleanup:
 	return info;
 }
 
+static void fill_grouped(GrB_Matrix *adj, GrB_Matrix *open, GrB_Matrix *close,
+						 int64_t n, int64_t k, int64_t base_offset) {
+	int64_t group_open_base[64] = {0};
+	int64_t group_close_base[64] = {0};
+	int64_t t_idx = base_offset;
+
+	for (int64_t b = 0; b < k; b++) {
+		group_open_base[b] = t_idx;
+		int64_t size = (b < n) ? (n - b + k - 1) / k : 0;
+		t_idx += size;
+	}
+	for (int64_t b = 0; b < k; b++) {
+		group_close_base[b] = t_idx;
+		int64_t size = (b < n) ? (n - b + k - 1) / k : 0;
+		t_idx += size;
+	}
+
+	for (int64_t i = 0; i < n; i++) {
+		int64_t b = i % k;
+		int64_t j = i / k;
+		adj[group_open_base[b] + j] = open[i];
+		adj[group_close_base[b] + j] = close[i];
+	}
+}
+
 GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
-									int64_t nonterms_count) {
+									int64_t nonterms_count,
+									bool is_beta_parity_group, int64_t k) {
 	int64_t n_par = graph->n_par;
 	int64_t n_bra = graph->n_bra;
 	bool has_normal = (graph->normal != NULL);
@@ -224,26 +250,29 @@ GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
 
 	int64_t t_offset = nonterms_count;
 
-	for (int64_t i = 0; i < n_par; i++) {
-		adj[t_offset + i] = graph->open_par[i];
-	}
-	t_offset += n_par;
-	for (int64_t i = 0; i < n_par; i++) {
-		adj[t_offset + i] = graph->close_par[i];
-	}
-	t_offset += n_par;
+	if (!is_beta_parity_group) {
+		// Parentheses (n_par) go linearly
+		for (int64_t i = 0; i < n_par; i++) {
+			adj[t_offset + i] = graph->open_par[i];
+			adj[t_offset + n_par + i] = graph->close_par[i];
+		}
 
-	for (int64_t i = 0; i < n_bra; i++) {
-		adj[t_offset + i] = graph->open_bra[i];
+		// Brackets (n_bra) are grouped by mask k
+		fill_grouped(adj, graph->open_bra, graph->close_bra, n_bra, k,
+					 t_offset + 2 * n_par);
+	} else {
+		// Parentheses (n_par) are grouped by mask k
+		fill_grouped(adj, graph->open_par, graph->close_par, n_par, k, t_offset + 0);
+
+		// Brackets (n_bra) go linearly
+		for (int64_t i = 0; i < n_bra; i++) {
+			adj[t_offset + 2 * n_par + i] = graph->open_bra[i];
+			adj[t_offset + 2 * n_par + n_bra + i] = graph->close_bra[i];
+		}
 	}
-	t_offset += n_bra;
-	for (int64_t i = 0; i < n_bra; i++) {
-		adj[t_offset + i] = graph->close_bra[i];
-	}
-	t_offset += n_bra;
 
 	if (has_normal) {
-		adj[t_offset] = graph->normal;
+		adj[t_offset + 2 * n_par + 2 * n_bra] = graph->normal;
 	}
 
 	*out = adj;
