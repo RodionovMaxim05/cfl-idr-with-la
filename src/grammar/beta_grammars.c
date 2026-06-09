@@ -33,7 +33,8 @@ MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules_count += 5;
 	}
 
-	MRGrammar_t gr = make_grammar(rules_count, terms_count, nonterms_count);
+	MRGrammar_t gr =
+		make_grammar(rules_count, terms_count, nonterms_count, true, /*k=*/1);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -142,6 +143,24 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 									   int64_t k) {
 	int64_t num_states = (int64_t)1 << k; // 2^k
 
+	// Arrays for storing the sizes of parentheses and their base IDs
+	int32_t par_group_size[64] = {0};
+	int32_t A_group_base[64] = {0};
+	int32_t B_group_base[64] = {0};
+	int32_t t_par_open_group_base[64] = {0};
+	int32_t t_par_close_group_base[64] = {0};
+
+	// Distribute n_par parentheses into k bit groups
+	int64_t active_groups = 0;
+	for (int64_t b = 0; b < k; b++) {
+		if (b < n_par) {
+			par_group_size[b] = (int32_t)((n_par - b + k - 1) / k);
+			active_groups++;
+		} else {
+			par_group_size[b] = 0;
+		}
+	}
+
 	// Nonterminal counts:
 	// S_mask:          num_states
 	// A_i, B_i:        2 * n_par
@@ -161,23 +180,21 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 
 	// Rules count:
-	// S_0 -> eps:                          1
-	// S_m -> N S_m (for each m):           num_states (if has_normal)
-	// N -> `normal`:                       1          (if has_normal)
-	// For each brId, each mask:
-	//   S_m -> A_i S_next:                 n_par * num_states
-	//   S_m -> B_i S_next:                 n_par * num_states
-	// A_i -> `(_i`, B_i -> `)_i`:          2 * n_par
-	// For each parId, each (innerMask, currentMask):
-	//   S_m -> C_i E_{i,im,m}:             num_states * num_states
-	//   E_{i,im,m} -> S_im G_{i,im,m}:     num_states * num_states
-	//   G_{i,im,m} -> D_i S_next:          num_states * num_states
-	// C_i -> `[_i`, D_i -> `]_i`:          2 * n_bra
+	// S_0 -> eps:                            1
+	// S_m -> N S_m (for each m):             num_states (if has_normal)
+	// N -> `normal`:                         1          (if has_normal)
+	// Terminal rules for C_i, D_i:           2          (if n_bra>0)
+	// Terminal rules for A, B by groups:     2 * active_groups
+	// Alpha transitions by groups and masks: 2 * active_groups * num_states
+	// Beta transitions:                      3 * num_states * num_states (if
+	//    n_bra>0)
 	int64_t rules_to_alloc = 1 + (has_normal ? num_states + 1 : 0) +
-							 2 * (n_par * num_states) + 2 * n_par +
-							 (n_bra > 0 ? (3 * num_states * num_states + 2) : 0);
+							 (n_bra > 0 ? 2 : 0) + 2 * active_groups +
+							 2 * active_groups * num_states +
+							 (n_bra > 0 ? (3 * num_states * num_states) : 0);
 
-	MRGrammar_t gr = make_grammar(rules_to_alloc, terms_count, nonterms_count);
+	MRGrammar_t gr =
+		make_grammar(rules_to_alloc, terms_count, nonterms_count, true, k);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -189,10 +206,16 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 
 	int32_t offset = (int32_t)num_states;
 
-	int32_t A_0 = (n_par > 0) ? offset : -1;
-	offset += (int32_t)n_par;
-	int32_t B_0 = (n_par > 0) ? offset : -1;
-	offset += (int32_t)n_par;
+	// Label nonterminals A and B with continuous groups
+	for (int64_t b = 0; b < k; b++) {
+		A_group_base[b] = offset;
+		offset += par_group_size[b];
+	}
+	for (int64_t b = 0; b < k; b++) {
+		B_group_base[b] = offset;
+		offset += par_group_size[b];
+	}
+
 	int32_t C_0 = (n_bra > 0) ? offset : -1;
 	offset += (int32_t)n_bra;
 	int32_t D_0 = (n_bra > 0) ? offset : -1;
@@ -210,10 +233,17 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 	// --- Terminal IDs ---
 
 	int32_t t_idx = 0;
-	int32_t t_par_open_0 = 0;
-	t_idx += (int32_t)n_par;
-	int32_t t_par_close_0 = t_idx;
-	t_idx += (int32_t)n_par;
+
+	// Label terminals for opening and closing parentheses by groups
+	for (int64_t b = 0; b < k; b++) {
+		t_par_open_group_base[b] = t_idx;
+		t_idx += par_group_size[b];
+	}
+	for (int64_t b = 0; b < k; b++) {
+		t_par_close_group_base[b] = t_idx;
+		t_idx += par_group_size[b];
+	}
+
 	int32_t t_bra_open_0 = t_idx;
 	t_idx += (int32_t)n_bra;
 	int32_t t_bra_close_0 = t_idx;
@@ -236,16 +266,6 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 	}
 
 	// --- Terminal rules ---
-	for (int64_t i = 0; i < n_par; i++) {
-		// A_i -> `(_i`
-		rules[r++] = (LAGraph_rule_EWCNF){A_0 + (int32_t)i,
-										  TERM(t_par_open_0) + (int32_t)i, -1, 0, 0};
-	}
-	for (int64_t i = 0; i < n_par; i++) {
-		// B_i -> `)_i`
-		rules[r++] = (LAGraph_rule_EWCNF){
-			B_0 + (int32_t)i, TERM(t_par_close_0) + (int32_t)i, -1, 0, 0};
-	}
 	if (n_bra > 0) {
 		// C_i -> `[_i`
 		rules[r++] = (LAGraph_rule_EWCNF){
@@ -257,18 +277,43 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A};
 	}
 
+	// Terminal rules for parentheses
+	for (int64_t b = 0; b < k; b++) {
+		if (par_group_size[b] == 0) {
+			continue;
+		}
+
+		// A_{b, j} -> `(_{b, j}`
+		rules[r++] = (LAGraph_rule_EWCNF){
+			A_group_base[b], TERM(t_par_open_group_base[b]), -1,
+			(uint32_t)par_group_size[b],
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A};
+		// B_{b, j} -> `)_{b, j}`
+		rules[r++] = (LAGraph_rule_EWCNF){
+			B_group_base[b], TERM(t_par_close_group_base[b]), -1,
+			(uint32_t)par_group_size[b],
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A};
+	}
+
 	// --- Alpha transition rules ---
-	for (int64_t i = 0; i < n_par; i++) {
-		int64_t bit = (int64_t)1 << (i % k);
+	for (int64_t b = 0; b < k; b++) {
+		if (par_group_size[b] == 0) {
+			continue;
+		}
+		int64_t bit = (int64_t)1 << b;
+
 		for (int64_t m = 0; m < num_states; m++) {
 			int32_t next = (int32_t)(m ^ bit);
 
-			// S_m -> A_i S_{m ^ bit}
+			// S_m -> A_{b, j} S_{m ^ bit}
 			rules[r++] = (LAGraph_rule_EWCNF){
-				NT_START + (int32_t)m, A_0 + (int32_t)i, NT_START + next, 0, 0};
-			// S_m -> B_i S_{m ^ bit}
+				NT_START + (int32_t)m, A_group_base[b], NT_START + next,
+				(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
+
+			// S_m -> B_{b, j} S_{m ^ bit}
 			rules[r++] = (LAGraph_rule_EWCNF){
-				NT_START + (int32_t)m, B_0 + (int32_t)i, NT_START + next, 0, 0};
+				NT_START + (int32_t)m, B_group_base[b], NT_START + next,
+				(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
 		}
 	}
 
@@ -309,6 +354,24 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	int64_t num_parity_states = (int64_t)1 << k;
 	int64_t s_count = num_parity_states * RSTATE_COUNT * RSTATE_COUNT;
 
+	// Arrays for storing the sizes of parentheses and their base IDs
+	int32_t par_group_size[64] = {0};
+	int32_t A_group_base[64] = {0};
+	int32_t B_group_base[64] = {0};
+	int32_t t_par_open_group_base[64] = {0};
+	int32_t t_par_close_group_base[64] = {0};
+
+	// Distribute n_par brackets into k bit groups
+	int64_t active_groups = 0;
+	for (int64_t b = 0; b < k; b++) {
+		if (b < n_par) {
+			par_group_size[b] = (int32_t)((n_par - b + k - 1) / k);
+			active_groups++;
+		} else {
+			par_group_size[b] = 0;
+		}
+	}
+
 	// Nonterminal counts (beta-SE: bra roles swapped with alpha-SE):
 	// S (start):                1
 	// Eps:                      1
@@ -332,9 +395,10 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	// S -> S_{0,QE,QE} Eps, S -> S_{0,QE,QC} Eps:        2
 	// S_{0,q,q} -> eps (for each q):                     RSTATE_COUNT
 	// N -> `normal`, S_{m,qs,qe} -> N S_{m,qs,qe}:       1 + s_count (if has_normal)
-	// A_i -> `(_i`, B_i -> `)_i`:                        2 * n_par
-	// S_{m,qs,qe} -> A_i S_{next,QO,qe}:                 n_par * s_count
-	// S_{m,qs,qe} -> B_i S_{next,QC,qe} (qs!=QE):        n_par * num_parity_states *
+	// A_i -> `(_i`, B_i -> `)_i`:                        2 * active_groups
+	// S_{m,qs,qe} -> A_i S_{next,QO,qe}:                 active_groups * s_count
+	// S_{m,qs,qe} -> B_i S_{next,QC,qe} (qs!=QE):        active_groups *
+	//                                                       num_parity_states *
 	//                                                       RSTATE_COUNT *
 	//                                                       (RSTATE_COUNT - 1)
 	// C_i -> `[_i`, D_i -> `]_i`:                        2
@@ -347,14 +411,16 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	// G_{i,im,m,qs,qmid,qe} -> D_i S_{next,qmid,qe}:     s_count *
 	//                                                       num_parity_states *
 	//                                                       RSTATE_COUNT
-	int64_t par_close_count =
-		n_par * num_parity_states * RSTATE_COUNT * (RSTATE_COUNT - 1);
+	int64_t indexed_par_close_count =
+		active_groups * num_parity_states * RSTATE_COUNT * (RSTATE_COUNT - 1);
 	int64_t bra_eg_count = s_count * num_parity_states * RSTATE_COUNT;
 	int64_t rules_to_alloc = 3 + RSTATE_COUNT + (has_normal ? s_count + 1 : 0) +
-							 2 * n_par + n_par * s_count + par_close_count +
+							 2 * active_groups + (active_groups * s_count) +
+							 indexed_par_close_count +
 							 ((n_bra > 0) ? (2 + 3 * bra_eg_count) : 0);
 
-	MRGrammar_t gr = make_grammar(rules_to_alloc, terms_count, nonterms_count);
+	MRGrammar_t gr =
+		make_grammar(rules_to_alloc, terms_count, nonterms_count, true, k);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -368,10 +434,16 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	int32_t S_base = 2;
 	int32_t offset = S_base + (int32_t)s_count;
 
-	int32_t A_0 = (n_par > 0) ? offset : -1;
-	offset += (int32_t)n_par;
-	int32_t B_0 = (n_par > 0) ? offset : -1;
-	offset += (int32_t)n_par;
+	// Label nonterminals A and B with continuous groups
+	for (int64_t b = 0; b < k; b++) {
+		A_group_base[b] = (par_group_size[b] > 0) ? offset : -1;
+		offset += par_group_size[b];
+	}
+	for (int64_t b = 0; b < k; b++) {
+		B_group_base[b] = (par_group_size[b] > 0) ? offset : -1;
+		offset += par_group_size[b];
+	}
+
 	int32_t C_0 = (n_bra > 0) ? offset : -1;
 	offset += (int32_t)n_bra;
 	int32_t D_0 = (n_bra > 0) ? offset : -1;
@@ -402,10 +474,17 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	// --- Terminal IDs ---
 
 	int32_t t_idx = 0;
-	int32_t t_par_open_0 = 0;
-	t_idx += (int32_t)n_par;
-	int32_t t_par_close_0 = t_idx;
-	t_idx += (int32_t)n_par;
+
+	// Label terminals for opening and closing parenthesis by groups
+	for (int64_t b = 0; b < k; b++) {
+		t_par_open_group_base[b] = (par_group_size[b] > 0) ? t_idx : -1;
+		t_idx += par_group_size[b];
+	}
+	for (int64_t b = 0; b < k; b++) {
+		t_par_close_group_base[b] = (par_group_size[b] > 0) ? t_idx : -1;
+		t_idx += par_group_size[b];
+	}
+
 	int32_t t_bra_open_0 = t_idx;
 	t_idx += (int32_t)n_bra;
 	int32_t t_bra_close_0 = t_idx;
@@ -434,23 +513,32 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 			for (int64_t qs = 0; qs < RSTATE_COUNT; qs++) {
 				for (int64_t qe = 0; qe < RSTATE_COUNT; qe++) {
 					rules[r++] = (LAGraph_rule_EWCNF){NT_S(m, qs, qe), NT_N,
-													  NT_S(m, qs, qe), 0};
+													  NT_S(m, qs, qe), 0, 0};
 				}
 			}
 		}
 	}
 
 	// --- Terminal rules ---
-	for (int64_t i = 0; i < n_par; i++) {
-		// A_i -> `(_i`
-		rules[r++] = (LAGraph_rule_EWCNF){A_0 + (int32_t)i,
-										  TERM(t_par_open_0) + (int32_t)i, -1, 0, 0};
-	}
-	for (int64_t i = 0; i < n_par; i++) {
-		// B_i -> `)_i`
+	// Terminal rules for parenthesis by groups
+	for (int64_t b = 0; b < k; b++) {
+		if (par_group_size[b] == 0) {
+			continue;
+		}
+
+		// A_{b, j} -> `(_{b, j}`
 		rules[r++] = (LAGraph_rule_EWCNF){
-			B_0 + (int32_t)i, TERM(t_par_close_0) + (int32_t)i, -1, 0, 0};
+			A_group_base[b], TERM(t_par_open_group_base[b]), -1,
+			(uint32_t)par_group_size[b],
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A};
+		// B_{b, j} -> `)_{b, j}`
+		rules[r++] = (LAGraph_rule_EWCNF){
+			B_group_base[b], TERM(t_par_close_group_base[b]), -1,
+			(uint32_t)par_group_size[b],
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A};
 	}
+
+	// Terminal rules for brackets
 	if (n_bra > 0) {
 		// C_i -> `[_i`
 		rules[r++] = (LAGraph_rule_EWCNF){
@@ -463,22 +551,29 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	}
 
 	// --- Alpha transitions rules ---
-	for (int64_t i = 0; i < n_par; i++) {
-		int64_t bit = (int64_t)1 << (i % k);
+	for (int64_t b = 0; b < k; b++) {
+		if (par_group_size[b] == 0) {
+			continue;
+		}
+		int64_t bit = (int64_t)1 << b;
+
 		for (int64_t m = 0; m < num_parity_states; m++) {
 			int64_t next = m ^ bit;
 			for (int qs = 0; qs < RSTATE_COUNT; qs++) {
 				for (int64_t qe = 0; qe < RSTATE_COUNT; qe++) {
-					// S_{m,qs,qe} -> A_i S_{next,QO,qe}  (open par, always allowed)
-					rules[r++] =
-						(LAGraph_rule_EWCNF){NT_S(m, qs, qe), A_0 + (int32_t)i,
-											 NT_S(next, RSTATE_QO, qe), 0, 0};
-					// S_{m,qs,qe} -> B_i S_{next,QC,qe}  (close par, forbidden from
-					//   QE)
+					// S_{m,qs,qe} -> A_{b,j} S_{next,QO,qe}  (open par, always
+					//   allowed)
+					rules[r++] = (LAGraph_rule_EWCNF){
+						NT_S(m, qs, qe), A_group_base[b], NT_S(next, RSTATE_QO, qe),
+						(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
+
+					// S_{m,qs,qe} -> B_{b,j} S_{next,QC,qe}  (close par, forbidden
+					//   from QE)
 					if (qs != RSTATE_QE) {
-						rules[r++] =
-							(LAGraph_rule_EWCNF){NT_S(m, qs, qe), B_0 + (int32_t)i,
-												 NT_S(next, RSTATE_QC, qe), 0, 0};
+						rules[r++] = (LAGraph_rule_EWCNF){
+							NT_S(m, qs, qe), B_group_base[b],
+							NT_S(next, RSTATE_QC, qe), (uint32_t)par_group_size[b],
+							LAGraph_EWNCF_INDEX_PROD_A};
 					}
 				}
 			}

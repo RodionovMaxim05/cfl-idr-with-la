@@ -96,15 +96,20 @@ GrB_Info build_idr_graph(IdrGraph *out, GrB_Matrix *input_matrices, int64_t n_pa
  * The caller is responsible for freeing the returned array with `free()`, but
  * must not free the individual matrices, as they remain owned by the `IdrGraph`.
  *
- * @param[out] out    Pointer to receive the allocated array of matrices.
- * @param[in]  graph  Source graph. Must not be `NULL`.
- * @param[in]  nonterms_count Number of non-terminal matrices to allocate at the
- * start of the array.
+ * @param[out] out                  Pointer to receive the allocated array of
+ *                                  matrices.
+ * @param[in]  graph                Source graph. Must not be `NULL`.
+ * @param[in]  nonterms_count       Number of non-terminal matrices to allocate at
+ *                                  the start of the array.
+ * @param[in]  is_beta_parity_group If `true`, use Beta grammar layout;
+ *                                  otherwise, use Alpha layout.
+ * @param[in]  k                    Group size for terminal matrices.
  *
  * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` if allocation fails.
  */
 GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
-									int64_t nonterms_count);
+									int64_t nonterms_count,
+									bool is_beta_parity_group, int64_t k);
 
 /**
  * @brief Constructs a unified boolean adjacency matrix from an `IdrGraph`.

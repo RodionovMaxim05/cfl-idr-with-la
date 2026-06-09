@@ -20,7 +20,8 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths
 	}
 
 	GRB_TRY(extract_edges_from_outputs(out_edges, paths, adj_matrices, grammar,
-									   comp->n, NULL));
+									   comp->n, comp->n_par, comp->n_bra, false,
+									   NULL));
 
 	GRB_TRY(build_idr_graph(&updated_graph, out_edges, comp->n_par, comp->n_bra,
 							comp->normal != NULL, comp->n, false));

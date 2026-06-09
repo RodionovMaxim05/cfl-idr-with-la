@@ -26,31 +26,41 @@ typedef struct {
  * - `grammar`: CFG rules in WCNF format defining the Dyck-language constraints
  *
  * The algorithm:
- * 1. Builds an index of grammar rules grouped by head nonterminal for efficient
- * lookup.
- * 2. Initializes a work stack with either:
- *    - A single `(src, tgt, NT_START)` tuple for on-demand analysis, or
- *    - All non-reflexive pairs from `paths[NT_START]` for all-pairs extraction.
- * 3. Performs DFS over the derivation forest:
- *    - For terminal rules `A → t`: checks if edge `(i, j)` exists in
+ * 1. Maps interleaved grammar terminal indices to straight output indices based on
+ *   layout parity.
+ * 2. Builds an index of grammar rules grouped by head nonterminal for efficient
+ *   lookup.
+ * 3. Initializes a work stack with either:
+ *   - A single `(src, tgt, NT_START)` tuple for on-demand analysis, or
+ *   - All non-reflexive pairs from `paths[NT_START]` for all-pairs extraction.
+ * 4. Performs DFS over the derivation forest:
+ *   - For terminal rules `A → t`: checks if edge `(i, j)` exists in
  * `adj_matrices[t]` and records it in `out[t]` if so.
- *    - For binary rules `A → B C`: verifies that subpaths `(i, mid)` via `B` and
- *      `(mid, j)` via `C` exist, then pushes unvisited subproblems onto the stack.
+ *   - For binary rules `A → B C`: verifies that subpaths `(i, mid)` via `B` and
+ *   `(mid, j)` via `C` exist, then pushes unvisited subproblems onto the stack.
  *
- * @param[out] out          Array of `grammar.terms_count` output matrices
- *                          (`GrB_BOOL`, n × n). Each `out[t]` receives edges labeled
- *                          with terminal `t`. Must be pre-allocated by caller or set
- *                          to `NULL` pointers.
- * @param[in]  paths        Array of `grammar.nonterms_count` CFL-reachability result
- *                          matrices from `LAGraph_CFL_AllPaths`.
- * @param[in]  adj_matrices Input adjacency matrices for each terminal symbol.
- * @param[in]  grammar      Grammar specification (rules, nonterminals, terminals).
- * @param[in]  n            Number of vertices (matrix dimension).
- * @param[in]  target_path  Optional query pair for on-demand analysis. Pass `NULL`
- *                          for all-pairs extraction.
+ * @param[out] out                  Array of `grammar.terms_count` output matrices
+ *                                  (`GrB_BOOL`, n × n). Each `out[t]` receives edges
+ *                                  labeled with terminal `t`. Must be pre-allocated
+ *                                  by caller or set to `NULL` pointers.
+ * @param[in]  paths                Array of `grammar.nonterms_count`
+ *                                  CFL-reachability result matrices from
+ *                                  `LAGraph_CFL_AllPaths`.
+ * @param[in]  adj_matrices         Input adjacency matrices for each terminal
+ *                                  symbol.
+ * @param[in]  grammar              Grammar specification.
+ * @param[in]  n                    Number of vertices (matrix dimension).
+ * @param[in]  n_par                Number of parenthesis types.
+ * @param[in]  n_bra                Number of bracket types.
+ * @param[in]  is_beta_parity_group If `true`, use Beta grammar layout; otherwise,
+ *                                  use Alpha.
+ * @param[in]  target_path          Optional query pair for on-demand analysis. Pass
+ *                                  `NULL` for all-pairs extraction.
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
-									GrB_Index n, const TargetPath *target_path);
+									GrB_Index n, int64_t n_par, int64_t n_bra,
+									bool is_beta_parity_group,
+									const TargetPath *target_path);
