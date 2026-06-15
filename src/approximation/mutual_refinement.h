@@ -9,6 +9,12 @@
 #include "mr_cache.h"
 #include "utils/extract_edges.h"
 
+// LAGraph_CFL_AllPaths_adv optimization flags
+#define OPT_EMPTY (1 << 0)
+#define OPT_FORMAT (1 << 1)
+#define OPT_LAZY (1 << 2)
+#define OPT_BLOCK (1 << 3)
+
 /**
  * @brief Computes a refined over-approximation of reachable paths using the
  * mutual-refinement (MR) algorithm.
