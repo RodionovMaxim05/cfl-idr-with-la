@@ -155,9 +155,9 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj,
-									 grammar.terms_count + grammar.nonterms_count,
-									 grammar.rules, grammar.rules_count, msg, 15));
+	GRB_TRY(LAGraph_CFL_AllPaths_adv(
+		paths, &all_paths_t, adj, grammar.terms_count + grammar.nonterms_count,
+		grammar.rules, grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK));
 
 	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, adj, grammar, graph->n,
 									   graph->n_par, graph->n_bra, grammar.is_beta,

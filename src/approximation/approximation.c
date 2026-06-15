@@ -63,7 +63,8 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 
 	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj_matrices,
 									 grammar.terms_count + grammar.nonterms_count,
-									 grammar.rules, grammar.rules_count, msg, 15));
+									 grammar.rules, grammar.rules_count, msg,
+									 OPT_EMPTY | OPT_FORMAT | OPT_LAZY | OPT_BLOCK));
 
 	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
 	GRB_TRY(extract_non_trivial_paths(&comp_result, paths[0]));
