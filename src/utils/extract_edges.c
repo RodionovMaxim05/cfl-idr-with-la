@@ -71,25 +71,28 @@ typedef struct {
 	int32_t binary_count;
 } NontermRules;
 
-static void fill_interleaved_map(int32_t *map, int64_t n_elems, int64_t k,
-								 int32_t start_idx, int32_t out_base) {
-	int32_t open_group_base[64] = {0};
-	int32_t close_group_base[64] = {0};
+static void fill_interleaved_map(int32_t *map, int64_t n, int64_t k,
+								 int32_t start_idx, int32_t out_base,
+								 const MRGrammarConfig *config) {
+	int32_t open_group_base[65] = {0};
+	int32_t close_group_base[65] = {0};
 	int32_t t_idx = start_idx;
 
-	for (int64_t b = 0; b < k; b++) {
+	for (int64_t b = 0; b <= k; b++) {
 		open_group_base[b] = t_idx;
-		t_idx += (b < n_elems) ? (int32_t)((n_elems - b + k - 1) / k) : 0;
+		t_idx += (int32_t)MR_grammar_get_group_size(config, b, n, k);
 	}
-	for (int64_t b = 0; b < k; b++) {
+	for (int64_t b = 0; b <= k; b++) {
 		close_group_base[b] = t_idx;
-		t_idx += (b < n_elems) ? (int32_t)((n_elems - b + k - 1) / k) : 0;
+		t_idx += (int32_t)MR_grammar_get_group_size(config, b, n, k);
 	}
-	for (int64_t i = 0; i < n_elems; i++) {
-		int64_t b = i % k;
-		int64_t j = i / k;
+
+	for (int64_t i = 0; i < n; i++) {
+		int64_t b, j;
+		MR_grammar_get_bracket_layout(config, i, n, k, &b, &j);
+
 		map[open_group_base[b] + j] = out_base + (int32_t)i;
-		map[close_group_base[b] + j] = out_base + (int32_t)n_elems + (int32_t)i;
+		map[close_group_base[b] + j] = out_base + (int32_t)n + (int32_t)i;
 	}
 }
 
@@ -102,6 +105,7 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	// Count pass
 	for (int64_t r = 0; r < g->rules_count; r++) {
 		if (g->rules[r].prod_A == -1) {
+			// epsilon - ignore
 			continue;
 		}
 
@@ -197,7 +201,7 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									GrB_Index n, int64_t n_par, int64_t n_bra,
-									bool is_beta_parity_group,
+									const MRGrammarConfig *config,
 									const TargetPath *target_path) {
 	GrB_Info info = GrB_SUCCESS;
 
@@ -218,19 +222,29 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		return GrB_OUT_OF_MEMORY;
 	}
 
-	if (!is_beta_parity_group) {
-		for (int64_t i = 0; i < n_par; i++) {
-			grammar_to_straight[i] = (int32_t)i;
-			grammar_to_straight[n_par + i] = (int32_t)(n_par + i);
+	switch (config->kind) {
+		case MR_GRAMMAR_ALPHA: {
+			for (int64_t i = 0; i < n_par; i++) {
+				grammar_to_straight[i] = (int32_t)i;
+				grammar_to_straight[n_par + i] = (int32_t)(n_par + i);
+			}
+
+			int32_t bra_base = 2 * (int32_t)n_par;
+			fill_interleaved_map(grammar_to_straight, n_bra, grammar.k,
+								 2 * (int32_t)n_par, 2 * (int32_t)n_par, config);
+			break;
 		}
-		fill_interleaved_map(grammar_to_straight, n_bra, grammar.k,
-							 2 * (int32_t)n_par, 2 * (int32_t)n_par);
-	} else {
-		fill_interleaved_map(grammar_to_straight, n_par, grammar.k, 0, 0);
-		for (int64_t i = 0; i < n_bra; i++) {
-			grammar_to_straight[2 * n_par + i] = (int32_t)(2 * n_par + i);
-			grammar_to_straight[2 * n_par + n_bra + i] =
-				(int32_t)(2 * n_par + n_bra + i);
+		case MR_GRAMMAR_BETA: {
+			fill_interleaved_map(grammar_to_straight, n_par, grammar.k, 0, 0,
+								 config);
+
+			int32_t bra_base = 2 * (int32_t)n_par;
+			for (int64_t i = 0; i < n_bra; i++) {
+				grammar_to_straight[bra_base + i] = bra_base + (int32_t)i;
+				grammar_to_straight[bra_base + (int32_t)n_bra + i] =
+					bra_base + (int32_t)n_bra + (int32_t)i;
+			}
+			break;
 		}
 	}
 	if (grammar.terms_count > 2 * n_par + 2 * n_bra) {

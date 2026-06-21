@@ -124,12 +124,12 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	const MRStepResult *hit = mr_cache_lookup(cache, key, grammar_tag);
 
 	GRB_TRY(idr_graph_collect_matrices(&adj, graph, grammar.nonterms_count,
-									   grammar.is_beta, grammar.k));
+									   &grammar.config, grammar.k));
 
 	if (hit) {
 		GRB_TRY(extract_edges_from_outputs(*out_edges, hit->matrices, adj, grammar,
 										   graph->n, graph->n_par, graph->n_bra,
-										   grammar.is_beta, target_path));
+										   &grammar.config, target_path));
 
 		GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 
@@ -160,7 +160,7 @@ static GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		grammar.rules, grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK));
 
 	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, adj, grammar, graph->n,
-									   graph->n_par, graph->n_bra, grammar.is_beta,
+									   graph->n_par, graph->n_bra, &grammar.config,
 									   target_path));
 
 	mr_cache_insert(cache, key, grammar_tag, paths,

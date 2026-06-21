@@ -19,9 +19,10 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths
 		goto cleanup;
 	}
 
+	MRGrammarConfig dummy_config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	GRB_TRY(extract_edges_from_outputs(out_edges, paths, adj_matrices, grammar,
-									   comp->n, comp->n_par, comp->n_bra, false,
-									   NULL));
+									   comp->n, comp->n_par, comp->n_bra,
+									   &dummy_config, NULL));
 
 	GRB_TRY(build_idr_graph(&updated_graph, out_edges, comp->n_par, comp->n_bra,
 							comp->normal != NULL, comp->n, false));
