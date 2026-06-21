@@ -8,19 +8,38 @@
 #define NT_START 0
 
 /**
+ * @brief Basic type of context-free grammar (transition diagram).
+ */
+typedef enum {
+	MR_GRAMMAR_ALPHA = 0, // Standard alpha grammar (direct transitions).
+	MR_GRAMMAR_BETA		  // Beta grammar (inverted logic for paired groups).
+} MRGrammarKind;
+
+/**
+ * @brief Configuration of specific grammar generation parameters.
+ *
+ * Encapsulates the rule generation type and additional context data
+ * required for grammar modifications.
+ */
+typedef struct {
+	MRGrammarKind kind;	   // Basic type of transition diagram (ALPHA or BETA).
+	int64_t exclude_index; // The index of the parenthesis to be isolated. If < 0
+						   // (e.g., -1), then there is no exception.
+} MRGrammarConfig;
+
+/**
  * @brief Grammar specification for CFL-reachability analysis in mutual refinement.
  *
  * Encodes a weighted context-free grammar in EWCNF format suitable for
- * `LAGraph_CFL_AllPaths`. Contains counts for nonterminals, terminals, and rules,
- * plus a pointer to the rule array. The `k` and `is_beta` fields together control
- * how terminal matrices are laid out.
+ * `LAGraph_CFL_AllPaths`. Contains mode configuration, group size, counts for
+ * nonterminals, terminals, and rules, plus a pointer to the rule array.
  */
 typedef struct {
-	bool is_beta;			// If true, parentheses are grouped; otherwise brackets
-	int64_t k;				// Group size for terminal matrices
-	int64_t nonterms_count; // Number of nonterminal symbols
-	int64_t terms_count;	// Number of terminal symbols (edge labels)
-	int64_t rules_count;	// Number of production rules
+	MRGrammarConfig config;	   // Configuration of specific grammar parameters
+	int64_t k;				   // Group size for terminal matrices
+	int64_t nonterms_count;	   // Number of nonterminal symbols
+	int64_t terms_count;	   // Number of terminal symbols (edge labels)
+	int64_t rules_count;	   // Number of production rules
 	LAGraph_rule_EWCNF *rules; // Array of grammar rules in EWCNF format
 } MRGrammar_t;
 
@@ -148,3 +167,33 @@ MRGrammar_t get_beta_grammar(IdrGrammarType grammar_type, int64_t n_par,
  * @param[in] gr  Grammar to free. May be `NULL` (no-op).
  */
 void grammar_free(MRGrammar_t *gr);
+
+/**
+ * @brief Calculates the size of a specific bracket group under the given grammar
+ * configuration.
+ *
+ * @param[in] config  Pointer to the grammar configuration.
+ * @param[in] b       Group index (0 to k).
+ * @param[in] n       Total number of bracket matrices to distribute.
+ * @param[in] k       The base number of target groups.
+ *
+ * @return The number of elements allocated to group b.
+ */
+int64_t MR_grammar_get_group_size(const MRGrammarConfig *config, int64_t b,
+								  int64_t n, int64_t k);
+
+/**
+ * @brief Determines the target group bucket and sub-index offset for the i-th
+ * bracket element.
+ *
+ * @param[in]  config       Pointer to the grammar configuration.
+ * @param[in]  i            The original sequential index of the bracket element.
+ * @param[in]  n            Total number of bracket matrices.
+ * @param[in]  k            The base number of target groups.
+ * @param[out] out_group    Pointer to receive the assigned target group index.
+ * @param[out] out_sub_idx  Pointer to receive the internal zero-based offset within
+ *                          the group.
+ */
+void MR_grammar_get_bracket_layout(const MRGrammarConfig *config, int64_t i,
+								   int64_t n, int64_t k, int64_t *out_group,
+								   int64_t *out_sub_idx);

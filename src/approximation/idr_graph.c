@@ -1,5 +1,6 @@
 #include "idr_graph.h"
 
+#include "grammar/grammar_analysis_utils.h"
 #include "internal/grb_utils.h"
 
 void idr_graph_free(IdrGraph *g) {
@@ -200,25 +201,25 @@ cleanup:
 }
 
 static void fill_grouped(GrB_Matrix *adj, GrB_Matrix *open, GrB_Matrix *close,
-						 int64_t n, int64_t k, int64_t base_offset) {
-	int64_t group_open_base[64] = {0};
-	int64_t group_close_base[64] = {0};
+						 int64_t n, int64_t k, int64_t base_offset,
+						 const MRGrammarConfig *config) {
+	int64_t group_open_base[65] = {0};
+	int64_t group_close_base[65] = {0};
 	int64_t t_idx = base_offset;
 
-	for (int64_t b = 0; b < k; b++) {
+	for (int64_t b = 0; b <= k; b++) {
 		group_open_base[b] = t_idx;
-		int64_t size = (b < n) ? (n - b + k - 1) / k : 0;
-		t_idx += size;
+		t_idx += MR_grammar_get_group_size(config, b, n, k);
 	}
-	for (int64_t b = 0; b < k; b++) {
+	for (int64_t b = 0; b <= k; b++) {
 		group_close_base[b] = t_idx;
-		int64_t size = (b < n) ? (n - b + k - 1) / k : 0;
-		t_idx += size;
+		t_idx += MR_grammar_get_group_size(config, b, n, k);
 	}
 
 	for (int64_t i = 0; i < n; i++) {
-		int64_t b = i % k;
-		int64_t j = i / k;
+		int64_t b, j;
+		MR_grammar_get_bracket_layout(config, i, n, k, &b, &j);
+
 		adj[group_open_base[b] + j] = open[i];
 		adj[group_close_base[b] + j] = close[i];
 	}
@@ -226,7 +227,7 @@ static void fill_grouped(GrB_Matrix *adj, GrB_Matrix *open, GrB_Matrix *close,
 
 GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
 									int64_t nonterms_count,
-									bool is_beta_parity_group, int64_t k) {
+									const MRGrammarConfig *config, int64_t k) {
 	int64_t n_par = graph->n_par;
 	int64_t n_bra = graph->n_bra;
 	bool has_normal = (graph->normal != NULL);
@@ -250,24 +251,32 @@ GrB_Info idr_graph_collect_matrices(GrB_Matrix **out, const IdrGraph *graph,
 
 	int64_t t_offset = nonterms_count;
 
-	if (!is_beta_parity_group) {
-		// Parentheses (n_par) go linearly
-		for (int64_t i = 0; i < n_par; i++) {
-			adj[t_offset + i] = graph->open_par[i];
-			adj[t_offset + n_par + i] = graph->close_par[i];
+	switch (config->kind) {
+		case MR_GRAMMAR_ALPHA: {
+			// Parentheses (n_par) go linearly
+			for (int64_t i = 0; i < n_par; i++) {
+				adj[t_offset + i] = graph->open_par[i];
+				adj[t_offset + n_par + i] = graph->close_par[i];
+			}
+
+			// Brackets (n_bra) are grouped by mask k
+			int64_t bra_base = t_offset + 2 * n_par;
+			fill_grouped(adj, graph->open_bra, graph->close_bra, n_bra, k, bra_base,
+						 config);
+			break;
 		}
 
-		// Brackets (n_bra) are grouped by mask k
-		fill_grouped(adj, graph->open_bra, graph->close_bra, n_bra, k,
-					 t_offset + 2 * n_par);
-	} else {
-		// Parentheses (n_par) are grouped by mask k
-		fill_grouped(adj, graph->open_par, graph->close_par, n_par, k, t_offset + 0);
+		case MR_GRAMMAR_BETA: {
+			// Parentheses (n_par) are grouped by mask k
+			fill_grouped(adj, graph->open_par, graph->close_par, n_par, k, t_offset,
+						 config);
 
-		// Brackets (n_bra) go linearly
-		for (int64_t i = 0; i < n_bra; i++) {
-			adj[t_offset + 2 * n_par + i] = graph->open_bra[i];
-			adj[t_offset + 2 * n_par + n_bra + i] = graph->close_bra[i];
+			// Brackets (n_bra) go linearly
+			for (int64_t i = 0; i < n_bra; i++) {
+				adj[t_offset + 2 * n_par + i] = graph->open_bra[i];
+				adj[t_offset + 2 * n_par + n_bra + i] = graph->close_bra[i];
+			}
+			break;
 		}
 	}
 

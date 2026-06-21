@@ -52,7 +52,8 @@ GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *g
 		goto cleanup;
 	}
 
-	GRB_TRY(idr_graph_collect_matrices(&adj, graph, 0, false, 1));
+	MRGrammarConfig dummy_config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
+	GRB_TRY(idr_graph_collect_matrices(&adj, graph, 0, &dummy_config, 1));
 
 	for (int64_t t = 0; t < terms_count; t++) {
 		GrB_Matrix tmp = NULL;

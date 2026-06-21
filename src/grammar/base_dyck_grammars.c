@@ -34,8 +34,9 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules_count += 5;
 	}
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
-		make_grammar(rules_count, terms_count, nonterms_count, false, /*k=*/1);
+		make_grammar(rules_count, terms_count, nonterms_count, config, /*k=*/1);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -165,8 +166,9 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 		rules_count += 2;
 	}
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
-		make_grammar(rules_count, terms_count, nonterms_count, false, /*k=*/1);
+		make_grammar(rules_count, terms_count, nonterms_count, config, /*k=*/1);
 	if (!gr.rules) {
 		return gr;
 	}

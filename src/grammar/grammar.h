@@ -32,21 +32,21 @@
  * @param[in] rules_count     Number of production rules to allocate space for.
  * @param[in] terms_count     Number of terminal symbols in the grammar.
  * @param[in] nonterms_count  Number of nonterminal symbols in the grammar.
+ * @param[in] config          Grammar configuration.
  * @param[in] k               Group size for terminal matrices.
- * @param[in] is_beta         If true, parentheses are grouped; otherwise brackets.
  *
  * @return Initialized `MRGrammar_t` with allocated `rules` array, or a zeroed
  *         struct if allocation fails.
  */
 static inline MRGrammar_t make_grammar(int64_t rules_count, int64_t terms_count,
-									   int64_t nonterms_count, bool is_beta,
-									   int64_t k) {
+									   int64_t nonterms_count,
+									   MRGrammarConfig config, int64_t k) {
 	MRGrammar_t gr = {0};
 	gr.rules = malloc(rules_count * sizeof(LAGraph_rule_EWCNF));
 	if (!gr.rules) {
 		return gr;
 	}
-	gr.is_beta = is_beta;
+	gr.config = config;
 	gr.k = k;
 	gr.rules_count = rules_count;
 	gr.terms_count = terms_count;

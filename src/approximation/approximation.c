@@ -51,8 +51,9 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 		goto cleanup;
 	}
 
+	MRGrammarConfig dummy_modifier = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	GRB_TRY(idr_graph_collect_matrices(&adj_matrices, comp, grammar.nonterms_count,
-									   false, grammar.k));
+									   &dummy_modifier, grammar.k));
 
 	paths = (GrB_Matrix *)calloc(grammar.nonterms_count + grammar.terms_count,
 								 sizeof(GrB_Matrix));

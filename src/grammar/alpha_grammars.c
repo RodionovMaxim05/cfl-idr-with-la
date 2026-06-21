@@ -33,8 +33,9 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules_count += 4;
 	}
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
-		make_grammar(rules_count, terms_count, nonterms_count, false, /*k=*/1);
+		make_grammar(rules_count, terms_count, nonterms_count, config, /*k=*/1);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -192,8 +193,9 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 							 2 * active_groups * num_states +
 							 (n_par > 0 ? (3 * num_states * num_states) : 0);
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
-		make_grammar(rules_to_alloc, terms_count, nonterms_count, false, k);
+		make_grammar(rules_to_alloc, terms_count, nonterms_count, config, k);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -417,8 +419,9 @@ MRGrammar_t dyck_alpha_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 							 bra_close_count +
 							 ((n_par > 0) ? (2 + 3 * par_eg_count) : 0);
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
-		make_grammar(rules_to_alloc, terms_count, nonterms_count, false, k);
+		make_grammar(rules_to_alloc, terms_count, nonterms_count, config, k);
 	if (!gr.rules) {
 		return gr;
 	}
@@ -662,8 +665,9 @@ MRGrammar_t dyck_alpha_grammar_k_parity_exclude(int64_t n_par, int64_t n_bra,
 							 2 * active_groups * num_states +
 							 (n_par > 0 ? (3 * num_states * num_states) : 0);
 
+	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = ex_bra};
 	MRGrammar_t gr =
-		make_grammar(rules_to_alloc, terms_count, nonterms_count, false, k);
+		make_grammar(rules_to_alloc, terms_count, nonterms_count, config, k);
 	if (!gr.rules) {
 		return gr;
 	}
