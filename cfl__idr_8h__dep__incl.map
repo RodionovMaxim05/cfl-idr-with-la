@@ -1,0 +1,5 @@
+<map id="include/cfl_idr.h" name="include/cfl_idr.h">
+<area shape="rect" id="Node000001" title="Public API for CFL&#45;based Dyck&#45;reachability approximation methods." alt="" coords="22,5,145,31"/>
+<area shape="rect" id="Node000002" href="$cfl__idr__graph__builder_8h.html" title="Utilities for constructing IdrGraph instances from parsed graph matrices." alt="" coords="5,79,161,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="86,44,86,79,81,79,81,44"/>
+</map>
