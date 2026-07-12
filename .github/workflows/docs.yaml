@@ -5,6 +5,7 @@ on:
     branches: [ main, dev_adv_algo ]
     paths:
       - 'include/**'
+      - 'README.md'
       - 'Doxyfile'
       - '.github/workflows/docs.yml'
 

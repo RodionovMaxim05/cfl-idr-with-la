@@ -39,6 +39,10 @@ All functionality is accessible via [include/cfl_idr.h](./include/cfl_idr.h), wh
   - `idr_remove_valueflow_unreachable()` — prune vertices irrelevant to value-flow analysis
   - `idr_graph_free()` — release all resources owned by an IdrGraph
 
+### Documentation
+
+Full API reference generated with Doxygen from the public headers in [`include/`](./include) is available **[here](https://rodionovmaxim05.github.io/cfl-idr-with-la/)**.
+
 ### Command-Line Interface
 
 ```bash
@@ -175,6 +179,12 @@ GrB_Matrix_free(&over);
 GrB_Matrix_free(&refined);
 idr_graph_free(&graph);
 ```
+
+## Benchmarks
+
+Benchmarks for this library are maintained in a separate repository: [CFG_bench](https://github.com/RodionovMaxim05/CFG_bench/tree/cfl-idr).
+
+Benchmark results, along with a comparison against other CFL-reachability implementations, are available **[here](https://github.com/RodionovMaxim05/cfl-idr-with-gll#performance-analysis)**.
 
 ## License
 
