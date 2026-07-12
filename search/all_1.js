@@ -1,7 +1,9 @@
 var searchData=
 [
-  ['cfl_5fidr_2eh_0',['cfl_idr.h',['../cfl__idr_8h.html',1,'']]],
-  ['cfl_5fidr_5fgraph_5fbuilder_2eh_1',['cfl_idr_graph_builder.h',['../cfl__idr__graph__builder_8h.html',1,'']]],
-  ['close_5fbra_2',['close_bra',['../structIdrGraph.html#a49fccbf22f9cc23c67e424129584a90f',1,'IdrGraph']]],
-  ['close_5fpar_3',['close_par',['../structIdrGraph.html#ab8166cf9c45652685eb9b51924907bed',1,'IdrGraph']]]
+  ['benchmarks_0',['Benchmarks',['../index.html#autotoc_md16',1,'']]],
+  ['bracket_5ftype_5fbrackets_1',['BRACKET_TYPE_BRACKETS',['../cfl__idr__graph__builder_8h.html#ac81e7ee94f193f6be2603b98f0d2f879a1948492da63ce1768664e9af4a230fe8',1,'cfl_idr_graph_builder.h']]],
+  ['bracket_5ftype_5fparentheses_2',['BRACKET_TYPE_PARENTHESES',['../cfl__idr__graph__builder_8h.html#ac81e7ee94f193f6be2603b98f0d2f879a1d5a0dced7e73124b8848f213e18e938',1,'cfl_idr_graph_builder.h']]],
+  ['bracket_5ftype_5funknown_3',['BRACKET_TYPE_UNKNOWN',['../cfl__idr__graph__builder_8h.html#ac81e7ee94f193f6be2603b98f0d2f879af878cd9caa0de53c5178c04f03b41167',1,'cfl_idr_graph_builder.h']]],
+  ['brackettype_4',['BracketType',['../cfl__idr__graph__builder_8h.html#ac81e7ee94f193f6be2603b98f0d2f879',1,'cfl_idr_graph_builder.h']]],
+  ['building_20from_20source_5',['Building from Source',['../index.html#autotoc_md10',1,'']]]
 ];

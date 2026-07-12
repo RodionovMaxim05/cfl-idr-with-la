@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>cfl-idr-with-la: Main Page</title>
+<title>cfl-idr-with-la: cfl-idr-with-la</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -69,10 +69,182 @@ $(function() {
 </div>
 </div>
 
-<div class="header">
-  <div class="headertitle"><div class="title">cfl-idr-with-la Documentation</div></div>
+<div><div class="header">
+  <div class="headertitle"><div class="title">cfl-idr-with-la </div></div>
 </div><!--header-->
 <div class="contents">
+<div class="textblock"><p><a class="anchor" id="md_README"></a> A C implementation of CFL-based approximation methods for interleaved Dyck reachability using GraphBLAS and LAGraph.</p>
+<h1><a class="anchor" id="autotoc_md1"></a>
+Problem Overview</h1>
+<p>Interleaved Dyck Reachability is a fundamental problem in static program analysis where path constraints are expressed as the shuffle of two Dyck languages — typically representing context sensitivity (parentheses) and field sensitivity (brackets). While this formulation enables high-precision analyses, the problem is known to be undecidable in general, and thus existing approaches resort to clever overapproximations.</p>
+<p>This project implements approximation techniques based on the research paper <a href="https://www.researchgate.net/publication/390804794_CFL-based_methods_for_approximating_interleaved_Dyck_reachability">"CFL-based methods for approximating interleaved Dyck reachability" (Conrado &amp; Pavlogiannis, 2025)</a>, which transforms the undecidable problem into a series of tractable CFL reachability problems solvable via the <a href="https://github.com/SparseLinearAlgebra/LAGraph/blob/homka122/all_algorithms_benchmark/include/LAGraphX.h#L1117">GraphBLAS-based algorithm from the LAGraph library</a>.</p>
+<h2><a class="anchor" id="autotoc_md2"></a>
+Supported Grammars</h2>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Grammar Type   </th><th class="markdownTableHeadNone">Description   </th><th class="markdownTableHeadNone">Article designation    </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>parity</code>   </td><td class="markdownTableBodyNone">Mutual refinement with k=1 parity condition on parentheses/brackets: requires the total count of parentheses/bracket symbols to be even   </td><td class="markdownTableBodyNone"><code>PAR</code>    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><code>parity2</code>   </td><td class="markdownTableBodyNone">Mutual refinement with k=2 parity condition: parentheses/brackets are split into 2 groups, count in each group must be even   </td><td class="markdownTableBodyNone"><code>PAR2</code>    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>se</code>   </td><td class="markdownTableBodyNone">Extends <code>PAR2</code> with a "valid endpoints" (structured equality) condition: parentheses/bracket substrings must start with <code>(</code>/<code>[</code> and end with <code>)</code>/<code>]</code>   </td><td class="markdownTableBodyNone"><code>PAR2E</code>    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><code>project</code>   </td><td class="markdownTableBodyNone">Extends <code>PAR</code> with unlabeled projection: additionally runs reachability on the graph with all labels stripped, catching unreachable pairs where total nesting depth is unbalanced   </td><td class="markdownTableBodyNone"><code>PARUnl</code>    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>exclude</code>   </td><td class="markdownTableBodyNone">Extends <code>PAR</code> with label erasure: iterates over each bracket label, erases it from the graph, and reruns <code>PAR</code> - exposing unreachable pairs that were hidden by that label   </td><td class="markdownTableBodyNone"><code>PARErase</code>    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><code>all</code>   </td><td class="markdownTableBodyNone">Combines <code>PAR2E</code> grammar with both the unlabeled projection phase and the label-erasure phase in the mutual refinement loop   </td><td class="markdownTableBodyNone"><code>COM</code>    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><code>parityD</code>   </td><td class="markdownTableBodyNone">Same grammar as <code>PAR</code>, but run in on-demand mode: mutual refinement is performed independently for each queried node pair, filtering out irrelevant graph parts   </td><td class="markdownTableBodyNone"><code>PARD</code>    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><code>on-demand</code>   </td><td class="markdownTableBodyNone">Same grammar as <code>COM</code>, but run in on-demand mode: combines all stronger grammars and graph simplifications with per-pair refinement   </td><td class="markdownTableBodyNone"><code>COMD</code>   </td></tr>
+</table>
+<h1><a class="anchor" id="autotoc_md3"></a>
+Architecture</h1>
+<p>The project is organized as a modular C library with a command-line interface:</p>
+<h2><a class="anchor" id="autotoc_md4"></a>
+Programmatic API</h2>
+<p>All functionality is accessible via <a href="./include/cfl_idr.h">include/cfl_idr.h</a>, which provides:</p>
+<ul>
+<li><code><a class="el" href="structIdrGraph.html" title="Sparse-matrix representation of a Dyck-reachability graph.">IdrGraph</a></code>: Sparse-matrix representation of a Dyck-reachability graph with parenthesis/bracket-labeled edges</li>
+<li><code>IdrGrammarType</code>: Enum controlling the precision/cost trade-off in over-approximation</li>
+<li>Core analysis functions:<ul>
+<li><code><a class="el" href="cfl__idr_8h.html#a0bc15fc8b31466bf253e01dc40efd709" title="Computes an under-approximation f reachable paths in a graph using Dyck language analysis.">idr_get_under_approx()</a></code> — conservative under-approximation of reachable paths</li>
+<li><code><a class="el" href="cfl__idr_8h.html#a047c9d8ab7fd9f292e68249eee28b96e" title="Computes a refined over-approximation of reachable paths using mutual refinement (MR) algorithm.">idr_get_over_approx()</a></code> — refined over-approximation via mutual refinement</li>
+<li><code><a class="el" href="cfl__idr_8h.html#a29ff39bc934fc19ccf7d4bee9098237b" title="Performs on-demand mutual refinement using two-phase grammar analysis.">idr_get_on_demand()</a></code> — efficient per-pair refinement for incremental queries</li>
+</ul>
+</li>
+<li>Utility functions:<ul>
+<li><code><a class="el" href="cfl__idr_8h.html#a1219ccd1e12c6740e73914cc0dfb30c2" title="Filters vertices from the graph that cannot participate in value-flow analysis paths.">idr_remove_valueflow_unreachable()</a></code> — prune vertices irrelevant to value-flow analysis</li>
+<li><code><a class="el" href="cfl__idr_8h.html#aa5bb87d5f02a2dae36f8ea0c36febc40" title="Releases all GraphBLAS matrices contained in an IdrGraph.">idr_graph_free()</a></code> — release all resources owned by an <a class="el" href="structIdrGraph.html" title="Sparse-matrix representation of a Dyck-reachability graph.">IdrGraph</a></li>
+</ul>
+</li>
+</ul>
+<h2><a class="anchor" id="autotoc_md5"></a>
+Documentation</h2>
+<p>Full API reference generated with Doxygen from the public headers in <a href="./include"><code>include/</code></a> is available <b><a href="https://rodionovmaxim05.github.io/cfl-idr-with-la/">here</a></b>.</p>
+<h2><a class="anchor" id="autotoc_md6"></a>
+Command-Line Interface</h2>
+<div class="fragment"><div class="line">./build/cfl-idr-with-la [options] &lt;input.g&gt; &lt;grammar&gt;</div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md7"></a>
+Value-Flow Analysis Mode</h1>
+<p>The library provides a specialized value-flow analysis mode (<code>-valueflow</code> flag) optimized for memory value-flow analysis: a valid path must start with <code>[</code> (similar to the store operation) and end with <code>]</code> (similar to the load operation) with the same id</p>
+<p><code>Recommendation</code>: For manual preprocessing before analysis:</p>
+<div class="fragment"><div class="line"><span class="comment">// Remove vertices unreachable from store/load operations</span></div>
+<div class="line"><a class="code hl_struct" href="structIdrGraph.html">IdrGraph</a> filtered_graph;</div>
+<div class="line">GrB_Info info = <a class="code hl_function" href="cfl__idr_8h.html#a1219ccd1e12c6740e73914cc0dfb30c2">idr_remove_valueflow_unreachable</a>(&amp;filtered_graph, &amp;original_graph);</div>
+<div class="ttc" id="acfl__idr_8h_html_a1219ccd1e12c6740e73914cc0dfb30c2"><div class="ttname"><a href="cfl__idr_8h.html#a1219ccd1e12c6740e73914cc0dfb30c2">idr_remove_valueflow_unreachable</a></div><div class="ttdeci">GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph)</div><div class="ttdoc">Filters vertices from the graph that cannot participate in value-flow analysis paths.</div></div>
+<div class="ttc" id="astructIdrGraph_html"><div class="ttname"><a href="structIdrGraph.html">IdrGraph</a></div><div class="ttdoc">Sparse-matrix representation of a Dyck-reachability graph.</div><div class="ttdef"><b>Definition</b> cfl_idr.h:20</div></div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md8"></a>
+Quick Start</h1>
+<h2><a class="anchor" id="autotoc_md9"></a>
+Requirements</h2>
+<ul>
+<li>C11-compatible compiler (developed and tested with GCC 13.3)</li>
+<li><a href="https://github.com/DrTimothyAldenDavis/GraphBLAS">GraphBLAS library</a> installed</li>
+<li><a href="https://github.com/SparseLinearAlgebra/LAGraph/tree/homka122/all_algorithms_benchmark">LAGraph library</a> is cloned and LAGRAPH_DIR variable points to the library's root directory (<b>note that <code>all_algorithms_benchmark</code> branch is required</b>)</li>
+<li>CMake 3.20+</li>
+<li>Optional: valgrind for memory checking, clang-format, clang-tidy for code quality</li>
+</ul>
+<h2><a class="anchor" id="autotoc_md10"></a>
+Building from Source</h2>
+<p>Before building, you need to specify the path to your LAGraph directory. You can do this in two ways:</p>
+<p>1) Set it directly in the Makefile: <br  />
+ Open the <a href="./Makefile">Makefile</a> and define the variable at the top:</p>
+<p><code>makefile LAGRAPH_DIR=/path/to/lagraph </code></p>
+<p>After setting it, you can simply run <code>make</code>, <code>make release</code>, etc.</p>
+<p>2) Pass it via command line: </p><pre class="fragment">````bash
+make LAGRAPH_DIR=/path/to/lagraph
+````
+</pre><p> Once configured, proceed with the build:</p>
+<div class="fragment"><div class="line"># Build debug version</div>
+<div class="line">make</div>
+<div class="line"> </div>
+<div class="line"># Or build release version</div>
+<div class="line">make release</div>
+<div class="line"> </div>
+<div class="line"># Build only the static library (no executable)</div>
+<div class="line">make lib</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md11"></a>
+Running Tests</h2>
+<div class="fragment"><div class="line"># Run unit tests (requires CTest)</div>
+<div class="line">make test</div>
+<div class="line"> </div>
+<div class="line"># Run programm with Valgrind memory checking</div>
+<div class="line">make test-memcheck ARGS=&quot;path/to/test.g parity&quot;</div>
+<div class="line"> </div>
+<div class="line"># Run tests with Valgrind memory checking (takes a very long time)</div>
+<div class="line">make test-memcheck</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md12"></a>
+Code Quality</h2>
+<div class="fragment"><div class="line"># Check code formatting (clang-format)</div>
+<div class="line">make format</div>
+<div class="line"> </div>
+<div class="line"># Run static analysis (clang-tidy)</div>
+<div class="line">make lint</div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md13"></a>
+Usage Examples</h1>
+<h2><a class="anchor" id="autotoc_md14"></a>
+CLI</h2>
+<div class="fragment"><div class="line"># Basic analysis with parity grammar</div>
+<div class="line">./build/cfl-idr-with-la graph.g parity</div>
+<div class="line"> </div>
+<div class="line"># Analysis with structured equality grammar and custom output</div>
+<div class="line">./build/cfl-idr-with-la -o results graph.g se</div>
+<div class="line"> </div>
+<div class="line"># Quiet mode (suppress pair output)</div>
+<div class="line">./build/cfl-idr-with-la -q graph.g parity2 -o output</div>
+<div class="line"> </div>
+<div class="line"># Value-flow analysis with exclusion grammar</div>
+<div class="line">./build/cfl-idr-with-la -valueflow graph.g exclude</div>
+<div class="line"> </div>
+<div class="line"># On-demand parity analysis (PARD mode)</div>
+<div class="line">./build/cfl-idr-with-la graph.g parityD</div>
+<div class="line"> </div>
+<div class="line"># Comprehensive on-demand analysis (COMD mode)</div>
+<div class="line">./build/cfl-idr-with-la graph.g on-demand</div>
+</div><!-- fragment --><h2><a class="anchor" id="autotoc_md15"></a>
+API Integration</h2>
+<div class="fragment"><div class="line"><span class="preprocessor">#include &quot;<a class="code" href="cfl__idr_8h.html">cfl_idr.h</a>&quot;</span></div>
+<div class="line"><span class="preprocessor">#include &quot;graph/parse_utils.h&quot;</span></div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Load graph from file</span></div>
+<div class="line"><a class="code hl_struct" href="structIdrGraph.html">IdrGraph</a> graph;</div>
+<div class="line">GrB_Info info = parse_graph(&amp;graph, <span class="stringliteral">&quot;graph.g&quot;</span>);</div>
+<div class="line"><span class="keywordflow">if</span> (info != GrB_SUCCESS) { <span class="comment">/* handle error */</span> }</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Compute under-approximation</span></div>
+<div class="line">GrB_Matrix under;</div>
+<div class="line">info = <a class="code hl_function" href="cfl__idr_8h.html#a0bc15fc8b31466bf253e01dc40efd709">idr_get_under_approx</a>(&amp;under, &amp;graph, <span class="comment">/*valueflow=*/</span><span class="keyword">false</span>);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Compute over-approximation with mutual refinement</span></div>
+<div class="line">GrB_Matrix over;</div>
+<div class="line">info = <a class="code hl_function" href="cfl__idr_8h.html#a047c9d8ab7fd9f292e68249eee28b96e">idr_get_over_approx</a>(&amp;over, &amp;graph, <a class="code hl_enumvalue" href="cfl__idr_8h.html#a7a86de0f223e810d4f8c650fd700db79a73c4b1ae0923757fcdb551140cc9ea38">IDR_PARITY2</a>, under, <span class="comment">/*valueflow=*/</span><span class="keyword">false</span>, <span class="comment">/*filter_empty=*/</span><span class="keyword">true</span>);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// On-demand refinement for specific query</span></div>
+<div class="line">GrB_Matrix refined;</div>
+<div class="line">info = <a class="code hl_function" href="cfl__idr_8h.html#a29ff39bc934fc19ccf7d4bee9098237b">idr_get_on_demand</a>(&amp;refined, &amp;graph, under, over, <span class="comment">/*parityD=*/</span><span class="keyword">false</span>, <span class="comment">/*valueflow=*/</span><span class="keyword">false</span>, <span class="comment">/*filter_empty=*/</span><span class="keyword">true</span>);</div>
+<div class="line"> </div>
+<div class="line"><span class="comment">// Cleanup</span></div>
+<div class="line">GrB_Matrix_free(&amp;under);</div>
+<div class="line">GrB_Matrix_free(&amp;over);</div>
+<div class="line">GrB_Matrix_free(&amp;refined);</div>
+<div class="line"><a class="code hl_function" href="cfl__idr_8h.html#aa5bb87d5f02a2dae36f8ea0c36febc40">idr_graph_free</a>(&amp;graph);</div>
+<div class="ttc" id="acfl__idr_8h_html"><div class="ttname"><a href="cfl__idr_8h.html">cfl_idr.h</a></div><div class="ttdoc">Public API for CFL-based Dyck-reachability approximation methods.</div></div>
+<div class="ttc" id="acfl__idr_8h_html_a047c9d8ab7fd9f292e68249eee28b96e"><div class="ttname"><a href="cfl__idr_8h.html#a047c9d8ab7fd9f292e68249eee28b96e">idr_get_over_approx</a></div><div class="ttdeci">GrB_Info idr_get_over_approx(GrB_Matrix *result, const IdrGraph *graph, IdrGrammarType grammar_type, GrB_Matrix under_approx, bool valueflow, bool filter_empty)</div><div class="ttdoc">Computes a refined over-approximation of reachable paths using mutual refinement (MR) algorithm.</div></div>
+<div class="ttc" id="acfl__idr_8h_html_a0bc15fc8b31466bf253e01dc40efd709"><div class="ttname"><a href="cfl__idr_8h.html#a0bc15fc8b31466bf253e01dc40efd709">idr_get_under_approx</a></div><div class="ttdeci">GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph, bool valueflow)</div><div class="ttdoc">Computes an under-approximation f reachable paths in a graph using Dyck language analysis.</div></div>
+<div class="ttc" id="acfl__idr_8h_html_a29ff39bc934fc19ccf7d4bee9098237b"><div class="ttname"><a href="cfl__idr_8h.html#a29ff39bc934fc19ccf7d4bee9098237b">idr_get_on_demand</a></div><div class="ttdeci">GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph, GrB_Matrix under_approx, GrB_Matrix over_approx, bool parity_d, bool valueflow, bool filter_empty)</div><div class="ttdoc">Performs on-demand mutual refinement using two-phase grammar analysis.</div></div>
+<div class="ttc" id="acfl__idr_8h_html_a7a86de0f223e810d4f8c650fd700db79a73c4b1ae0923757fcdb551140cc9ea38"><div class="ttname"><a href="cfl__idr_8h.html#a7a86de0f223e810d4f8c650fd700db79a73c4b1ae0923757fcdb551140cc9ea38">IDR_PARITY2</a></div><div class="ttdeci">@ IDR_PARITY2</div><div class="ttdoc">PAR2: Parity grammar with k=2 - Extended parity condition.</div><div class="ttdef"><b>Definition</b> cfl_idr.h:41</div></div>
+<div class="ttc" id="acfl__idr_8h_html_aa5bb87d5f02a2dae36f8ea0c36febc40"><div class="ttname"><a href="cfl__idr_8h.html#aa5bb87d5f02a2dae36f8ea0c36febc40">idr_graph_free</a></div><div class="ttdeci">void idr_graph_free(IdrGraph *g)</div><div class="ttdoc">Releases all GraphBLAS matrices contained in an IdrGraph.</div></div>
+</div><!-- fragment --><h1><a class="anchor" id="autotoc_md16"></a>
+Benchmarks</h1>
+<p>Benchmarks for this library are maintained in a separate repository: <a href="https://github.com/RodionovMaxim05/CFG_bench/tree/cfl-idr">CFG_bench</a>.</p>
+<p>Benchmark results, along with a comparison against other CFL-reachability implementations, are available <b><a href="https://github.com/RodionovMaxim05/cfl-idr-with-gll#performance-analysis">here</a></b>.</p>
+<h1><a class="anchor" id="autotoc_md17"></a>
+License</h1>
+<p>Distributed under the <a href="https://choosealicense.com/licenses/mit/">MIT License</a>. See [<code>LICENSE</code>](LICENSE) for more information. </p>
+</div></div><!-- PageDoc -->
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>

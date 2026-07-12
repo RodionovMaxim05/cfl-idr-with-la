@@ -1,5 +1,6 @@
 var searchData=
 [
-  ['open_5fbra_0',['open_bra',['../structIdrGraph.html#a006c54672fb11baf13f187f71f17d567',1,'IdrGraph']]],
-  ['open_5fpar_1',['open_par',['../structIdrGraph.html#ab82edb1f13c94e2e109fb5cd01f0b7ec',1,'IdrGraph']]]
+  ['get_5fidr_5fgraph_0',['get_idr_graph',['../cfl__idr__graph__builder_8h.html#a803a711e9478bf4fd1600e15ba2377fa',1,'cfl_idr_graph_builder.h']]],
+  ['get_5ftype_1',['get_type',['../structTerminalFormat.html#a7afed5d1d33f7d3f1661e417a9ba2b9e',1,'TerminalFormat']]],
+  ['grammars_2',['Supported Grammars',['../index.html#autotoc_md2',1,'']]]
 ];
