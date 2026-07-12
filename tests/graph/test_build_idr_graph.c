@@ -5,9 +5,8 @@
 #include <string.h>
 
 #include "cfl_idr.h"
-#include "graph/convert_graph.h"
+#include "cfl_idr_graph_builder.h"
 #include "symbol_list.h"
-#include "terminal/terminal_format.h"
 
 static char msg[LAGRAPH_MSG_LEN];
 

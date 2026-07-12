@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file cfl_idr_graph_builder.h
+ * @brief Utilities for constructing `IdrGraph` instances from parsed graph matrices.
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -11,9 +16,9 @@
  * @brief Classification of bracket/parenthesis types for CFL grammar construction.
  */
 typedef enum {
-	BRACKET_TYPE_PARENTHESES, // Labels representing parentheses: `(` and `)`
-	BRACKET_TYPE_BRACKETS,	  // Labels representing brackets: `[` and `]`
-	BRACKET_TYPE_UNKNOWN	  // Unrecognized or non-bracket label
+	BRACKET_TYPE_PARENTHESES, ///< Labels representing parentheses: `(` and `)`
+	BRACKET_TYPE_BRACKETS,	  ///< Labels representing brackets: `[` and `]`
+	BRACKET_TYPE_UNKNOWN	  ///< Unrecognized or non-bracket label
 } BracketType;
 
 /**

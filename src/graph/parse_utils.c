@@ -1,6 +1,6 @@
 #include "parse_utils.h"
 
-#include "convert_graph.h"
+#include "cfl_idr_graph_builder.h"
 #include "parser.h"
 #include "symbol_list.h"
 
