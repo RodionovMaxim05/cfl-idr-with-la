@@ -1,9 +1,8 @@
-#include "convert_graph.h"
-
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "cfl_idr_graph_builder.h"
 #include "internal/grb_utils.h"
 #include "uthash.h"
 

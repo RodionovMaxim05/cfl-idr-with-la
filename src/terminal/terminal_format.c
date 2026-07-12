@@ -1,7 +1,7 @@
-#include "terminal_format.h"
-
 #include <stdio.h>
 #include <string.h>
+
+#include "cfl_idr_graph_builder.h"
 
 static BracketType default_get_type(const char *label) {
 	if (label == NULL || label[1] == '\0') {

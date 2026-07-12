@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file cfl_idr.h
+ * @brief Public API for CFL-based Dyck-reachability approximation methods.
+ */
+
 #include <GraphBLAS.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,14 +18,14 @@
  * Unlabeled edges are stored in `normal`.
  */
 typedef struct {
-	GrB_Index n;		   // Number of vertices in the graph
-	int64_t n_par;		   // Number of parenthesis types ( and )
-	GrB_Matrix *open_par;  // open_par[i]  - edges labeled `(i`
-	GrB_Matrix *close_par; // close_par[i] - edges labeled `)i`
-	int64_t n_bra;		   // Number of bracket types [ and ]
-	GrB_Matrix *open_bra;  // open_bra[i]  - edges labeled `[i`
-	GrB_Matrix *close_bra; // close_bra[i] - edges labeled `]i`
-	GrB_Matrix normal;	   // Unlabeled (epsilon) edges
+	GrB_Index n;		   ///< Number of vertices in the graph
+	int64_t n_par;		   ///< Number of parenthesis types ( and )
+	GrB_Matrix *open_par;  ///< open_par[i]  - edges labeled `(i`
+	GrB_Matrix *close_par; ///< close_par[i] - edges labeled `)i`
+	int64_t n_bra;		   ///< Number of bracket types [ and ]
+	GrB_Matrix *open_bra;  ///< open_bra[i]  - edges labeled `[i`
+	GrB_Matrix *close_bra; ///< close_bra[i] - edges labeled `]i`
+	GrB_Matrix normal;	   ///< Unlabeled (epsilon) edges
 } IdrGraph;
 
 /**
@@ -30,15 +35,15 @@ typedef struct {
  * trade-off between precision and computational cost.
  */
 typedef enum {
-	IDR_UNKNOWN = -1, // Uninitialized / error sentinel
-	IDR_DEFAULT = 0,  // Default mutual refinement grammar
-	IDR_PARITY,		  // PAR: Parity grammar with k=1 - Parity condition
-	IDR_PARITY2,	  // PAR2: Parity grammar with k=2 - Extended parity condition
-	IDR_SE,			  // PAR2E: Structured equality grammar - Valid endpoints
-	IDR_PROJECT,	  // PARUnl: Projection grammar - Projection to an unlabeled Dyck
-					  // grammar
-	IDR_EXCLUDE,	  // PARErase: Exclusion grammar - Erasing labels
-	IDR_ALL			  // COM: Comprehensive grammar
+	IDR_UNKNOWN = -1, ///< Uninitialized / error sentinel
+	IDR_DEFAULT = 0,  ///< Default mutual refinement grammar
+	IDR_PARITY,		  ///< PAR: Parity grammar with k=1 - Parity condition
+	IDR_PARITY2,	  ///< PAR2: Parity grammar with k=2 - Extended parity condition
+	IDR_SE,			  ///< PAR2E: Structured equality grammar - Valid endpoints
+	IDR_PROJECT,	  ///< PARUnl: Projection grammar - Projection to an unlabeled
+					  ///< Dyck grammar
+	IDR_EXCLUDE,	  ///< PARErase: Exclusion grammar - Erasing labels
+	IDR_ALL			  ///< COM: Comprehensive grammar
 } IdrGrammarType;
 
 /**

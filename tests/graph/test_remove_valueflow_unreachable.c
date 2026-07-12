@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "approximation/idr_graph.h"
 #include "cfl_idr.h"
 
 static char msg[LAGRAPH_MSG_LEN];
