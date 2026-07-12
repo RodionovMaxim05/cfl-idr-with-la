@@ -1,0 +1,27 @@
+name: Deploy Doxygen docs
+
+on:
+  push:
+    branches: [ main, dev_adv_algo ]
+    paths:
+      - 'include/**'
+      - 'Doxyfile'
+      - '.github/workflows/docs.yml'
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Doxygen and Graphviz
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Build docs
+        run: doxygen Doxyfile
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/html
