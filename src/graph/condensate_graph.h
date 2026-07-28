@@ -32,11 +32,10 @@ typedef struct {
  *    reachable vertex pairs: `mutual = under_approx ∧ under_approxᵀ`.
  * 2. Treats `mutual` as an undirected graph and computes connected components
  *    via `LAGr_ConnectedComponents`.
- * 3. Constructs a permutation matrix `P` where `P[rep(i)][i] = true` maps each
- *    vertex to its component representative.
- * 4. Condenses each adjacency matrix via matrix multiplication:
- *    `condensed[t] = P * adj[t] * Pᵀ`, effectively merging vertices within
- *    the same SCC.
+ * 3. Extracts component IDs.
+ * 4. Condenses each adjacency matrix via direct tuple mapping: extracts
+ *    edges, maps endpoints to component IDs (`u -> comp[u]`, `v -> comp[v]`),
+ *    and builds condensed matrices using `GrB_PLUS_BOOL` to combine duplicates.
  * 5. Builds a new `IdrGraph` from the condensed matrices with empty-pair
  *    filtering enabled.
  *
