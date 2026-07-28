@@ -15,7 +15,7 @@
  * @brief Computes the element-wise logical intersection of three boolean matrices.
  *
  * Performs `result = A ∧ B ∧ C` using GraphBLAS `GrB_Matrix_eWiseMult_BinaryOp`
- * with the `GrB_LAND` operator. If `C` is `NULL`, computes only `A ∧ B`.
+ * with the `GrB_LAND` operator. If `C` is `NULL`, computes `A ∧ B`.
  *
  * @param[out] result  Output matrix (newly allocated, n × n, `GrB_BOOL`).
  * @param[in]  A       First input matrix.
@@ -30,40 +30,18 @@
 static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B,
 								  GrB_Matrix C, GrB_Index n) {
 	*result = NULL;
+
 	GrB_Info info = GrB_Matrix_new(result, GrB_BOOL, n, n);
 	if (info != GrB_SUCCESS) {
 		return info;
 	}
 
-	if (C == NULL) {
-		return GrB_Matrix_eWiseMult_BinaryOp(*result, NULL, NULL, GrB_LAND, A, B,
-											 NULL);
-	}
-
-	GrB_Matrix temp;
-	info = GrB_Matrix_new(&temp, GrB_BOOL, n, n);
+	info = GrB_Matrix_eWiseMult_BinaryOp(*result, C, NULL, GrB_LAND, A, B, NULL);
 	if (info != GrB_SUCCESS) {
-		goto cleanup;
+		GrB_Matrix_free(result);
+		*result = NULL;
 	}
 
-	info = GrB_Matrix_eWiseMult_BinaryOp(temp, NULL, NULL, GrB_LAND, A, B, NULL);
-	if (info != GrB_SUCCESS) {
-		goto cleanup;
-	}
-
-	info =
-		GrB_Matrix_eWiseMult_BinaryOp(*result, NULL, NULL, GrB_LAND, temp, C, NULL);
-	if (info != GrB_SUCCESS) {
-		goto cleanup;
-	}
-
-	GrB_Matrix_free(&temp);
-	return info;
-
-cleanup:
-	GrB_Matrix_free(result);
-	GrB_Matrix_free(&temp);
-	*result = NULL;
 	return info;
 }
 
