@@ -16,10 +16,12 @@ GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *g
 	GrB_Matrix under_T = NULL;
 	GrB_Matrix mutual = NULL;
 	LAGraph_Graph G = NULL;
-	GrB_Matrix P = NULL;
-	GrB_Matrix P_T = NULL;
 	GrB_Matrix *condensed_matrices = NULL;
 	GrB_Matrix *adj = NULL;
+	uint64_t *comp_array = NULL;
+	GrB_Index *rows = NULL;
+	GrB_Index *cols = NULL;
+	bool *vals = NULL;
 
 	GRB_TRY(GrB_Matrix_new(&under_T, GrB_BOOL, graph->n, graph->n));
 	GRB_TRY(GrB_Matrix_new(&mutual, GrB_BOOL, graph->n, graph->n));
@@ -32,19 +34,19 @@ GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *g
 	G->is_symmetric_structure = LAGraph_TRUE;
 	GRB_TRY(LAGr_ConnectedComponents(&components, G, msg));
 	GRB_TRY(LAGraph_Delete(&G, msg));
+	GrB_Matrix_free(&mutual);
 
-	// Construct a permutation matrix P and P_T
-	GRB_TRY(GrB_Matrix_new(&P, GrB_BOOL, graph->n, graph->n));
-	GRB_TRY(GrB_Matrix_new(&P_T, GrB_BOOL, graph->n, graph->n));
-
-	for (GrB_Index i = 0; i < graph->n; i++) {
-		uint64_t rep;
-		GRB_TRY(GrB_Vector_extractElement_UINT64(&rep, components, i));
-		GRB_TRY(GrB_Matrix_setElement_BOOL(P, true, rep, i));
+	comp_array = (uint64_t *)malloc(graph->n * sizeof(uint64_t));
+	if (!comp_array) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
 	}
-	GRB_TRY(GrB_transpose(P_T, NULL, NULL, P, NULL));
 
-	// Condense each matrix: condensed = P * adj * P_T
+	// Extracting components
+	GrB_Index nvals_comp = graph->n;
+	GRB_TRY(
+		GrB_Vector_extractTuples_UINT64(NULL, comp_array, &nvals_comp, components));
+
 	int64_t terms_count = get_terms_count(graph->n_par, graph->n_bra, graph->normal);
 	condensed_matrices = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
 	if (!condensed_matrices) {
@@ -55,27 +57,51 @@ GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *g
 	MRGrammarConfig dummy_config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	GRB_TRY(idr_graph_collect_matrices(&adj, graph, 0, &dummy_config, 1));
 
+	// Direct tuple mapping
 	for (int64_t t = 0; t < terms_count; t++) {
-		GrB_Matrix tmp = NULL;
-		GRB_TRY(
-			GrB_Matrix_new(&condensed_matrices[t], GrB_BOOL, graph->n, graph->n));
-		GRB_TRY(GrB_Matrix_new(&tmp, GrB_BOOL, graph->n, graph->n));
+		GrB_Index nvals = 0;
+		GRB_TRY(GrB_Matrix_nvals(&nvals, adj[t]));
 
-		GrB_Info tmp_info =
-			GrB_mxm(tmp, NULL, NULL, GrB_LOR_LAND_SEMIRING_BOOL, P, adj[t], NULL);
-		if (tmp_info >= GrB_SUCCESS) {
-			tmp_info = GrB_mxm(condensed_matrices[t], NULL, NULL,
-							   GrB_LOR_LAND_SEMIRING_BOOL, tmp, P_T, NULL);
+		if (nvals == 0) {
+			GRB_TRY(GrB_Matrix_new(&condensed_matrices[t], GrB_BOOL, graph->n,
+								   graph->n));
+			continue;
 		}
-		GrB_Matrix_free(&tmp);
-		if (tmp_info < GrB_SUCCESS) {
-			info = tmp_info;
+
+		rows = (GrB_Index *)malloc(nvals * sizeof(GrB_Index));
+		cols = (GrB_Index *)malloc(nvals * sizeof(GrB_Index));
+		vals = (bool *)malloc(nvals * sizeof(bool));
+		if (!rows || !cols || !vals) {
+			info = GrB_OUT_OF_MEMORY;
 			goto cleanup;
 		}
+
+		GRB_TRY(GrB_Matrix_extractTuples_BOOL(rows, cols, vals, &nvals, adj[t]));
+
+		// (u, v) -> (comp[u], comp[v])
+		for (GrB_Index k = 0; k < nvals; k++) {
+			rows[k] = comp_array[rows[k]];
+			cols[k] = comp_array[cols[k]];
+		}
+
+		// Compressed matrix assembly with automatic collapse of duplicates
+		GRB_TRY(
+			GrB_Matrix_new(&condensed_matrices[t], GrB_BOOL, graph->n, graph->n));
+		GRB_TRY(GrB_Matrix_build_BOOL(condensed_matrices[t], rows, cols, vals, nvals,
+									  GrB_PLUS_BOOL));
+
+		free(rows);
+		rows = NULL;
+		free(cols);
+		cols = NULL;
+		free(vals);
+		vals = NULL;
 	}
 
 	free((void *)adj);
 	adj = NULL;
+	free(comp_array);
+	comp_array = NULL;
 
 	build_idr_graph(&out->condensed_graph, condensed_matrices, graph->n_par,
 					graph->n_bra, graph->normal != NULL, graph->n, true);
@@ -84,15 +110,14 @@ GrB_Info condensate_from_under_approx(CondensationResult *out, const IdrGraph *g
 	free((void *)condensed_matrices);
 	condensed_matrices = NULL;
 
+	return GrB_SUCCESS;
+
 cleanup:
-	GrB_Matrix_free(&under_T);
 	GrB_Matrix_free(&mutual);
 	if (G) {
 		LAGraph_Delete(&G, msg);
 	}
 	GrB_Vector_free(&components);
-	GrB_Matrix_free(&P);
-	GrB_Matrix_free(&P_T);
 	if (condensed_matrices) {
 		for (int64_t t = 0; t < terms_count; t++) {
 			GrB_Matrix_free(&condensed_matrices[t]);
@@ -100,6 +125,11 @@ cleanup:
 		free((void *)condensed_matrices);
 	}
 	free((void *)adj);
+	free(comp_array);
+	free(rows);
+	free(cols);
+	free(vals);
+
 	return info;
 }
 
