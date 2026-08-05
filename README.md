@@ -6,7 +6,12 @@ A C implementation of CFL-based approximation methods for interleaved Dyck reach
 
 Interleaved Dyck Reachability is a fundamental problem in static program analysis where path constraints are expressed as the shuffle of two Dyck languages — typically representing context sensitivity (parentheses) and field sensitivity (brackets). While this formulation enables high-precision analyses, the problem is known to be undecidable in general, and thus existing approaches resort to clever overapproximations.
 
-This project implements approximation techniques based on the research paper ["CFL-based methods for approximating interleaved Dyck reachability" (Conrado & Pavlogiannis, 2025)](https://www.researchgate.net/publication/390804794_CFL-based_methods_for_approximating_interleaved_Dyck_reachability), which transforms the undecidable problem into a series of tractable CFL reachability problems solvable via the [GraphBLAS-based algorithm from the LAGraph library](https://github.com/SparseLinearAlgebra/LAGraph/blob/homka122/all_algorithms_benchmark/include/LAGraphX.h#L1117).
+This project implements approximation techniques based on the research paper ["CFL-based methods for approximating interleaved Dyck reachability" (Conrado & Pavlogiannis, 2025)](https://www.researchgate.net/publication/390804794_CFL-based_methods_for_approximating_interleaved_Dyck_reachability), which transforms the undecidable problem into a series of tractable CFL reachability problems.
+
+To evaluate these methods, two implementations with different algorithmic approaches were developed:
+
+- **C implementation (this repository):** Uses a linear-algebra-based approach with [the CFL reachability solver from LAGraph](https://github.com/SparseLinearAlgebra/LAGraph/blob/homka122/all_algorithms_benchmark/include/LAGraphX.h#L1117).
+- **Kotlin implementation ([`cfl-idr-with-gll`](https://github.com/RodionovMaxim05/cfl-idr-with-gll)):** Uses an explicit graph-traversal approach with the GLL-based CFL reachability solver from [UCFS](https://github.com/FormalLanguageConstrainedPathQuerying/UCFS).
 
 ### Supported Grammars
 
