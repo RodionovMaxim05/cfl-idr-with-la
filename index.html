@@ -77,7 +77,12 @@ $(function() {
 <h1><a class="anchor" id="autotoc_md1"></a>
 Problem Overview</h1>
 <p>Interleaved Dyck Reachability is a fundamental problem in static program analysis where path constraints are expressed as the shuffle of two Dyck languages — typically representing context sensitivity (parentheses) and field sensitivity (brackets). While this formulation enables high-precision analyses, the problem is known to be undecidable in general, and thus existing approaches resort to clever overapproximations.</p>
-<p>This project implements approximation techniques based on the research paper <a href="https://www.researchgate.net/publication/390804794_CFL-based_methods_for_approximating_interleaved_Dyck_reachability">"CFL-based methods for approximating interleaved Dyck reachability" (Conrado &amp; Pavlogiannis, 2025)</a>, which transforms the undecidable problem into a series of tractable CFL reachability problems solvable via the <a href="https://github.com/SparseLinearAlgebra/LAGraph/blob/homka122/all_algorithms_benchmark/include/LAGraphX.h#L1117">GraphBLAS-based algorithm from the LAGraph library</a>.</p>
+<p>This project implements approximation techniques based on the research paper <a href="https://www.researchgate.net/publication/390804794_CFL-based_methods_for_approximating_interleaved_Dyck_reachability">"CFL-based methods for approximating interleaved Dyck reachability" (Conrado &amp; Pavlogiannis, 2025)</a>, which transforms the undecidable problem into a series of tractable CFL reachability problems.</p>
+<p>To evaluate these methods, two implementations with different algorithmic approaches were developed:</p>
+<ul>
+<li><b>C implementation (this repository):</b> Uses a linear-algebra-based approach with <a href="https://github.com/SparseLinearAlgebra/LAGraph/blob/homka122/all_algorithms_benchmark/include/LAGraphX.h#L1117">the CFL reachability solver from LAGraph</a>.</li>
+<li>**Kotlin implementation (<a href="https://github.com/RodionovMaxim05/cfl-idr-with-gll"><code>cfl-idr-with-gll</code></a>):** Uses an explicit graph-traversal approach with the GLL-based CFL reachability solver from <a href="https://github.com/FormalLanguageConstrainedPathQuerying/UCFS">UCFS</a>.</li>
+</ul>
 <h2><a class="anchor" id="autotoc_md2"></a>
 Supported Grammars</h2>
 <table class="markdownTable">
