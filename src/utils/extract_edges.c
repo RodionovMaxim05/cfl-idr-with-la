@@ -555,7 +555,19 @@ static inline GrB_Info get_fast_adj(FastBoolMatrix **out_fadj,
 	return GrB_SUCCESS;
 }
 
+static inline bool mid_entry_uses_heap(const MidEntry *e) {
+	return e->rule_count > MID_ENTRY_INLINE_CAP + 1;
+}
+
+static inline int32_t mid_entry_rest_id(const MidEntry *e, uint32_t k) {
+	if (mid_entry_uses_heap(e)) {
+		return e->rest.rule_ids_rest[k];
+	}
+	return e->rest.inline_ids[k];
+}
+
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
+									const BinaryRuleInfo *rule_table,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									GrB_Index n, int64_t n_par, int64_t n_bra,
 									const MRGrammarConfig *config,
@@ -699,8 +711,9 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 
 		// Iterate over intermediate vertices
 		for (GrB_Index ki = 0; ki < elem.n; ki++) {
-			GrB_Index mid =
+			MidEntry entry =
 				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
+			GrB_Index mid = entry.mid;
 
 			if (mid == GrB_INDEX_MAX) {
 				// Terminal edge: A -> term
@@ -717,44 +730,36 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 														   i, j));
 					}
 				}
-			} else {
-				// Binary split: A -> B C via mid
-				for (int32_t ri = 0; ri < rules->binary_count; ri++) {
-					int32_t B = rules->binary_rules[ri].B;
-					int32_t C = rules->binary_rules[ri].C;
+				continue;
+			}
 
-					// Check that both subpaths exist in paths
-					AllPathsElem dummy;
-					FastPathsMatrix *B_paths = NULL;
-					GRB_TRY(get_fast_paths(&B_paths, fast_paths, paths, B, n));
-					if (!fast_paths_get(B_paths, i, mid, &dummy)) {
-						continue;
-					}
-					FastPathsMatrix *C_paths = NULL;
-					GRB_TRY(get_fast_paths(&C_paths, fast_paths, paths, C, n));
-					if (!fast_paths_get(C_paths, mid, j, &dummy)) {
-						continue;
-					}
+			// Binary split: A -> B C via mid
 
-					// Only push if not already visited - avoids stacking the
-					// same pair multiple times
-					VisitedKey lkB = {i, mid, B, ._pad = 0};
-					VisitedKey lkC = {mid, j, C, ._pad = 0};
-					VisitedEntry *fB, *fC;
-					HASH_FIND(hh, visited_ht, &lkB, sizeof(VisitedKey), fB);
-					HASH_FIND(hh, visited_ht, &lkC, sizeof(VisitedKey), fC);
+			uint32_t rule_count = entry.rule_count;
 
-					if (!fB) {
-						if (!stack_push(&stack, i, mid, B)) {
-							info = GrB_OUT_OF_MEMORY;
-							goto cleanup;
-						}
+			for (uint32_t part = 0; part < rule_count; part++) {
+				int32_t rid = (part == 0) ? entry.rule_id0
+										  : mid_entry_rest_id(&entry, part - 1);
+				BinaryRuleInfo ri = rule_table[rid];
+
+				// Only push if not already visited - avoids stacking the
+				// same pair multiple times
+				VisitedKey lkB = {i, mid, ri.B, ._pad = 0};
+				VisitedKey lkC = {mid, j, ri.C, ._pad = 0};
+				VisitedEntry *fB, *fC;
+				HASH_FIND(hh, visited_ht, &lkB, sizeof(VisitedKey), fB);
+				HASH_FIND(hh, visited_ht, &lkC, sizeof(VisitedKey), fC);
+
+				if (!fB) {
+					if (!stack_push(&stack, i, mid, ri.B)) {
+						info = GrB_OUT_OF_MEMORY;
+						goto cleanup;
 					}
-					if (!fC) {
-						if (!stack_push(&stack, mid, j, C)) {
-							info = GrB_OUT_OF_MEMORY;
-							goto cleanup;
-						}
+				}
+				if (!fC) {
+					if (!stack_push(&stack, mid, j, ri.C)) {
+						info = GrB_OUT_OF_MEMORY;
+						goto cleanup;
 					}
 				}
 			}

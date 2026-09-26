@@ -1,6 +1,7 @@
 #pragma once
 
 #include <GraphBLAS.h>
+#include <LAGraphX.h>
 #include <stdint.h>
 
 #include "cfl_idr.h"
@@ -28,6 +29,7 @@ typedef enum {
 typedef struct {
 	GrB_Matrix *matrices; // Array of `count` matrices, one per grammar nonterminal
 	int64_t count;		  // Number of nonterminals (length of `matrices`)
+	BinaryRuleInfo *rule_table;
 	GrB_Type all_paths_t; // GraphBLAS type used for path values
 } MRStepResult;
 
@@ -134,5 +136,5 @@ const MRStepResult *mr_cache_lookup(const MRCache *c, uint64_t graph_key,
  *       `mr_cache_free` is called.
  */
 GrB_Info mr_cache_insert(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
-						 GrB_Matrix *paths_matrices, int64_t nonterms_count,
-						 GrB_Type all_paths_t);
+						 GrB_Matrix *paths_matrices, BinaryRuleInfo *rule_table,
+						 int64_t nonterms_count, GrB_Type all_paths_t);

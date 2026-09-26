@@ -58,6 +58,7 @@ typedef struct {
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
+									const BinaryRuleInfo *rule_table,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									GrB_Index n, int64_t n_par, int64_t n_bra,
 									const MRGrammarConfig *config,

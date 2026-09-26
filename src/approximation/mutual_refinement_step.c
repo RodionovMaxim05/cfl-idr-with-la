@@ -32,6 +32,7 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	GrB_Matrix *adj = NULL;
 	GrB_Type all_paths_t = NULL;
 	GrB_Matrix *paths = NULL;
+	BinaryRuleInfo *rule_table = NULL;
 
 	uint64_t key = get_graph_cache_hash(graph);
 	const MRStepResult *hit = mr_cache_lookup(cache, key, grammar_tag);
@@ -40,9 +41,9 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 									   &grammar.config, grammar.k));
 
 	if (hit) {
-		GRB_TRY(extract_edges_from_outputs(*out_edges, hit->matrices, adj, grammar,
-										   graph->n, graph->n_par, graph->n_bra,
-										   &grammar.config, target_path));
+		GRB_TRY(extract_edges_from_outputs(
+			*out_edges, hit->matrices, hit->rule_table, adj, grammar, graph->n,
+			graph->n_par, graph->n_bra, &grammar.config, target_path));
 
 		GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 
@@ -68,15 +69,16 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths_adv(
-		paths, &all_paths_t, adj, grammar.terms_count + grammar.nonterms_count,
-		grammar.rules, grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK));
+	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, &rule_table, adj,
+									 grammar.terms_count + grammar.nonterms_count,
+									 grammar.rules, grammar.rules_count, msg,
+									 OPT_EMPTY | OPT_BLOCK));
 
-	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, adj, grammar, graph->n,
-									   graph->n_par, graph->n_bra, &grammar.config,
-									   target_path));
+	GRB_TRY(extract_edges_from_outputs(*out_edges, paths, rule_table, adj, grammar,
+									   graph->n, graph->n_par, graph->n_bra,
+									   &grammar.config, target_path));
 
-	mr_cache_insert(cache, key, grammar_tag, paths,
+	mr_cache_insert(cache, key, grammar_tag, paths, rule_table,
 					grammar.nonterms_count + grammar.terms_count, all_paths_t);
 
 	GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));

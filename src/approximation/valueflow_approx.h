@@ -34,6 +34,7 @@
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
 GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths,
+									  const BinaryRuleInfo *rule_table,
 									  GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									  const IdrGraph *comp);
 
