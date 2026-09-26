@@ -1,4 +1,4 @@
 [submodule "vendor/parser"]
 	path = vendor/parser
-	url = https://github.com/homka122/CFG_bench.git
-	branch = main
+	url = https://github.com/RodionovMaxim05/CFG_bench.git
+	branch = cfl-idr
