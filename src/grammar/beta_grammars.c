@@ -185,16 +185,16 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 	// N -> `normal`:                         1          (if has_normal)
 	// Terminal rules for C_i, D_i:           2          (if n_bra>0)
 	// Terminal rules for A, B by groups:     2 * active_groups
-	// Alpha transitions by groups and masks: 2 * active_groups * num_states
+	// Alpha transitions by groups and masks: 2 * active_groups (XOR OPT)
 	// Beta transitions  (if n_bra>0):
 	//   E_{im,i} -> C_i G_{im,i}:            num_states
 	//   G_{im,i} -> S_im D_i:                num_states
-	//   S_m -> E_{im,i} S_next:              num_states * num_states
-	//   Total: num_states * num_states + 2 * num_states
-	int64_t rules_to_alloc =
-		1 + (has_normal ? num_states + 1 : 0) + (n_bra > 0 ? 2 : 0) +
-		2 * active_groups + 2 * active_groups * num_states +
-		(n_bra > 0 ? (num_states * num_states + 2 * num_states) : 0);
+	//   S_m -> E_{im,i} S_next:              1 (XOR OPT)
+	//   Total: 1 + 2 * num_states
+	int64_t rules_to_alloc = 1 + (has_normal ? num_states + 1 : 0) +
+							 (n_bra > 0 ? 2 : 0) + 2 * active_groups +
+							 2 * active_groups +
+							 (n_bra > 0 ? (1 + 2 * num_states) : 0);
 
 	MRGrammarConfig config = {.kind = MR_GRAMMAR_BETA, .exclude_index = -1};
 	MRGrammar_t gr =
@@ -306,20 +306,51 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 			continue;
 		}
 		int64_t bit = (int64_t)1 << b;
+		int64_t cnt = par_group_size[b];
 
-		for (int64_t m = 0; m < num_states; m++) {
-			int32_t next = (int32_t)(m ^ bit);
-
-			// S_m -> A_{b, j} S_{m ^ bit}
-			rules[r++] = (LAGraph_rule_EWCNF){
-				NT_START + (int32_t)m, A_group_base[b], NT_START + next,
-				(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
-
-			// S_m -> B_{b, j} S_{m ^ bit}
-			rules[r++] = (LAGraph_rule_EWCNF){
-				NT_START + (int32_t)m, B_group_base[b], NT_START + next,
-				(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
+		// S_m -> A_{b, j} S_{m ^ bit}
+		XorFamilyRouting *rt_open =
+			(XorFamilyRouting *)calloc(1, sizeof(XorFamilyRouting));
+		rt_open->S_operand_base = NT_START;
+		rt_open->S_target_base = NT_START;
+		rt_open->S_stride = 1;
+		rt_open->N = num_states;
+		rt_open->active_masks_count = cnt;
+		rt_open->active_masks = (int64_t *)malloc(cnt * sizeof(int64_t));
+		rt_open->p_ids = (int32_t *)malloc(cnt * sizeof(int32_t));
+		for (int64_t j = 0; j < cnt; j++) {
+			rt_open->active_masks[j] = bit;
+			rt_open->p_ids[j] = A_group_base[b] + (int32_t)j;
 		}
+
+		LAGraph_rule_EWCNF rule_open = {0};
+		rule_open.nonterm = NT_START;
+		rule_open.prod_A = A_group_base[b];
+		rule_open.prod_B = NT_START;
+		rule_open.xor_routing = rt_open;
+		rules[r++] = rule_open;
+
+		// S_m -> B_{b, j} S_{m ^ bit}
+		XorFamilyRouting *rt_close =
+			(XorFamilyRouting *)calloc(1, sizeof(XorFamilyRouting));
+		rt_close->S_operand_base = NT_START;
+		rt_close->S_target_base = NT_START;
+		rt_close->S_stride = 1;
+		rt_close->N = num_states;
+		rt_close->active_masks_count = cnt;
+		rt_close->active_masks = (int64_t *)malloc(cnt * sizeof(int64_t));
+		rt_close->p_ids = (int32_t *)malloc(cnt * sizeof(int32_t));
+		for (int64_t j = 0; j < cnt; j++) {
+			rt_close->active_masks[j] = bit;
+			rt_close->p_ids[j] = B_group_base[b] + (int32_t)j;
+		}
+
+		LAGraph_rule_EWCNF rule_close = {0};
+		rule_close.nonterm = NT_START;
+		rule_close.prod_A = B_group_base[b];
+		rule_close.prod_B = NT_START;
+		rule_close.xor_routing = rt_close;
+		rules[r++] = rule_close;
 	}
 
 	// --- Beta transition rules ---
@@ -339,16 +370,32 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
 				LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_B};
 		}
 
-		// S_m -> E_{im,i} S_next
-		for (int64_t m = 0; m < num_states; m++) {
-			for (int64_t im = 0; im < num_states; im++) {
-				int64_t next = m ^ im;
+		int64_t total_count = num_states * n_bra;
 
-				rules[r++] = (LAGraph_rule_EWCNF){
-					NT_START + (int32_t)m, E_ID(im), NT_START + (int32_t)next,
-					(uint32_t)n_bra, LAGraph_EWNCF_INDEX_PROD_A};
+		// S_m -> E_{im,i} S_next
+		XorFamilyRouting *rt_beta =
+			(XorFamilyRouting *)calloc(1, sizeof(XorFamilyRouting));
+		rt_beta->S_operand_base = NT_START;
+		rt_beta->S_target_base = NT_START;
+		rt_beta->S_stride = 1;
+		rt_beta->N = num_states;
+		rt_beta->active_masks_count = total_count;
+		rt_beta->active_masks = (int64_t *)malloc(total_count * sizeof(int64_t));
+		rt_beta->p_ids = (int32_t *)malloc(total_count * sizeof(int32_t));
+		for (int64_t im = 0; im < num_states; im++) {
+			for (int64_t i = 0; i < n_bra; i++) {
+				int64_t idx = im * n_bra + i;
+				rt_beta->active_masks[idx] = im;
+				rt_beta->p_ids[idx] = E_ID(im) + (int32_t)i;
 			}
 		}
+
+		LAGraph_rule_EWCNF rule_beta = {0};
+		rule_beta.nonterm = NT_START;
+		rule_beta.prod_A = E_base;
+		rule_beta.prod_B = NT_START;
+		rule_beta.xor_routing = rt_beta;
+		rules[r++] = rule_beta;
 	}
 
 // Cleanup macros
@@ -404,25 +451,27 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	// S_{0,q,q} -> eps (for each q):                     RSTATE_COUNT
 	// N -> `normal`, S_{m,qs,qe} -> N S_{m,qs,qe}:       1 + s_count (if has_normal)
 	// A_i -> `(_i`, B_i -> `)_i`:                        2 * active_groups
-	// S_{m,qs,qe} -> A_i S_{next,QO,qe}:                 active_groups * s_count
+	// S_{m,qs,qe} -> A_i S_{next,QO,qe}:                 active_groups *
+	//                                                       RSTATE_COUNT *
+	//                                                       RSTATE_COUNT (XOR OPT)
 	// S_{m,qs,qe} -> B_i S_{next,QC,qe} (qs!=QE):        active_groups *
-	//                                                       num_parity_states *
 	//                                                       RSTATE_COUNT *
 	//                                                       (RSTATE_COUNT - 1)
+	//                                                       (XOR OPT)
 	// C_i -> `[_i`, D_i -> `]_i`:                        2
 	// E_{im,qs,qmid,i} -> C_i G_{...}:                   eg_base_count
 	// G_{im,qs,qmid,i} -> S_{im,qs,qmid} D_i:            eg_base_count
-	// S_{m,qs,qe} -> E_{im,qs,qmid,i} S_{next,qmid,qe}:  s_count *
-	//                                                       num_parity_states *
+	// S_{m,qs,qe} -> E_{im,qs,qmid,i} S_{next,qmid,qe}:  RSTATE_COUNT *
+	//                                                       RSTATE_COUNT *
 	//                                                       RSTATE_COUNT
-	int64_t indexed_par_close_count =
-		active_groups * num_parity_states * RSTATE_COUNT * (RSTATE_COUNT - 1);
-	int64_t bra_eg_count = s_count * num_parity_states * RSTATE_COUNT;
+	//                                                       (XOR OPT)
 	int64_t eg_base_count = num_parity_states * RSTATE_COUNT * RSTATE_COUNT;
 	int64_t rules_to_alloc =
 		3 + RSTATE_COUNT + (has_normal ? s_count + 1 : 0) + 2 * active_groups +
-		(active_groups * s_count) + indexed_par_close_count +
-		((n_bra > 0) ? (2 + 2 * eg_base_count + bra_eg_count) : 0);
+		active_groups * RSTATE_COUNT * RSTATE_COUNT +
+		active_groups * RSTATE_COUNT * (RSTATE_COUNT - 1) + (n_bra > 0 ? 2 : 0) +
+		(n_bra > 0 ? (2 * eg_base_count + RSTATE_COUNT * RSTATE_COUNT * RSTATE_COUNT)
+				   : 0);
 
 	MRGrammarConfig config = {.kind = MR_GRAMMAR_BETA, .exclude_index = -1};
 	MRGrammar_t gr =
@@ -557,25 +606,53 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 			continue;
 		}
 		int64_t bit = (int64_t)1 << b;
+		int64_t cnt = par_group_size[b];
 
-		for (int64_t m = 0; m < num_parity_states; m++) {
-			int64_t next = m ^ bit;
-			for (int qs = 0; qs < RSTATE_COUNT; qs++) {
-				for (int64_t qe = 0; qe < RSTATE_COUNT; qe++) {
-					// S_{m,qs,qe} -> A_{b,j} S_{next,QO,qe}  (open par, always
-					//   allowed)
-					rules[r++] = (LAGraph_rule_EWCNF){
-						NT_S(m, qs, qe), A_group_base[b], NT_S(next, RSTATE_QO, qe),
-						(uint32_t)par_group_size[b], LAGraph_EWNCF_INDEX_PROD_A};
+		for (int qs = 0; qs < RSTATE_COUNT; qs++) {
+			for (int qe = 0; qe < RSTATE_COUNT; qe++) {
+				// S_{m,qs,qe} -> A_{b,j} S_{next,QO,qe}  (open par, always allowed)
+				XorFamilyRouting *rt_open = calloc(1, sizeof(XorFamilyRouting));
+				rt_open->S_operand_base = NT_S(0, RSTATE_QO, qe);
+				rt_open->S_target_base = NT_S(0, qs, qe);
+				rt_open->S_stride = RSTATE_COUNT * RSTATE_COUNT;
+				rt_open->N = num_parity_states;
+				rt_open->active_masks_count = cnt;
+				rt_open->active_masks = malloc(cnt * sizeof(int64_t));
+				rt_open->p_ids = malloc(cnt * sizeof(int32_t));
+				for (int64_t j = 0; j < cnt; j++) {
+					rt_open->active_masks[j] = bit;
+					rt_open->p_ids[j] = A_group_base[b] + (int32_t)j;
+				}
 
-					// S_{m,qs,qe} -> B_{b,j} S_{next,QC,qe}  (close par, forbidden
-					//   from QE)
-					if (qs != RSTATE_QE) {
-						rules[r++] = (LAGraph_rule_EWCNF){
-							NT_S(m, qs, qe), B_group_base[b],
-							NT_S(next, RSTATE_QC, qe), (uint32_t)par_group_size[b],
-							LAGraph_EWNCF_INDEX_PROD_A};
+				LAGraph_rule_EWCNF rule_open = {0};
+				rule_open.nonterm = NT_START;
+				rule_open.prod_A = A_group_base[b];
+				rule_open.prod_B = NT_START;
+				rule_open.xor_routing = rt_open;
+				rules[r++] = rule_open;
+
+				// S_{m,qs,qe} -> B_{b,j} S_{next,QC,qe}  (close par, forbidden from
+				//   QE)
+				if (qs != RSTATE_QE) {
+					XorFamilyRouting *rt_close = calloc(1, sizeof(XorFamilyRouting));
+					rt_close->S_operand_base = NT_S(0, RSTATE_QC, qe);
+					rt_close->S_target_base = NT_S(0, qs, qe);
+					rt_close->S_stride = RSTATE_COUNT * RSTATE_COUNT;
+					rt_close->N = num_parity_states;
+					rt_close->active_masks_count = cnt;
+					rt_close->active_masks = malloc(cnt * sizeof(int64_t));
+					rt_close->p_ids = malloc(cnt * sizeof(int32_t));
+					for (int64_t j = 0; j < cnt; j++) {
+						rt_close->active_masks[j] = bit;
+						rt_close->p_ids[j] = B_group_base[b] + (int32_t)j;
 					}
+
+					LAGraph_rule_EWCNF rule_close = {0};
+					rule_close.nonterm = NT_START;
+					rule_close.prod_A = B_group_base[b];
+					rule_close.prod_B = NT_START;
+					rule_close.xor_routing = rt_close;
+					rules[r++] = rule_close;
 				}
 			}
 		}
@@ -607,18 +684,33 @@ MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 		}
 
 		// S_{m,qs,qe} -> E_{im,qs,qmid,i} S_{next,qmid,qe}
-		for (int64_t m = 0; m < num_parity_states; m++) {
-			for (int64_t im = 0; im < num_parity_states; im++) {
-				int64_t next = m ^ im;
-				for (int qs = 0; qs < RSTATE_COUNT; qs++) {
-					for (int qmid = 0; qmid < RSTATE_COUNT; qmid++) {
-						for (int64_t qe = 0; qe < RSTATE_COUNT; qe++) {
-							rules[r++] = (LAGraph_rule_EWCNF){
-								NT_S(m, qs, qe), E_ID(im, qs, qmid),
-								NT_S(next, qmid, qe), (uint32_t)n_bra,
-								LAGraph_EWNCF_INDEX_PROD_A};
+		for (int qs = 0; qs < RSTATE_COUNT; qs++) {
+			for (int qmid = 0; qmid < RSTATE_COUNT; qmid++) {
+				for (int qe = 0; qe < RSTATE_COUNT; qe++) {
+					int64_t total_count = num_parity_states * n_bra;
+
+					XorFamilyRouting *rt = calloc(1, sizeof(XorFamilyRouting));
+					rt->S_operand_base = NT_S(0, qmid, qe);
+					rt->S_target_base = NT_S(0, qs, qe);
+					rt->S_stride = RSTATE_COUNT * RSTATE_COUNT;
+					rt->N = num_parity_states;
+					rt->active_masks_count = total_count;
+					rt->active_masks = malloc(total_count * sizeof(int64_t));
+					rt->p_ids = malloc(total_count * sizeof(int32_t));
+					for (int64_t im = 0; im < num_parity_states; im++) {
+						for (int64_t i = 0; i < n_bra; i++) {
+							int64_t idx = im * n_bra + i;
+							rt->active_masks[idx] = im;
+							rt->p_ids[idx] = E_ID(im, qs, qmid) + (int32_t)i;
 						}
 					}
+
+					LAGraph_rule_EWCNF rule = {0};
+					rule.nonterm = NT_START;
+					rule.prod_A = E_base;
+					rule.prod_B = NT_START;
+					rule.xor_routing = rt;
+					rules[r++] = rule;
 				}
 			}
 		}

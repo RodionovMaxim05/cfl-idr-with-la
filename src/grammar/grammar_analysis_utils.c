@@ -54,6 +54,15 @@ void grammar_free(MRGrammar_t *gr) {
 	if (!gr) {
 		return;
 	}
+	for (int64_t i = 0; i < gr->rules_count; i++) {
+		if (gr->rules[i].xor_routing == NULL) {
+			continue;
+		}
+		free(gr->rules[i].xor_routing->active_masks);
+		free(gr->rules[i].xor_routing->p_ids);
+		free(gr->rules[i].xor_routing);
+		gr->rules[i].xor_routing = NULL;
+	}
 	free(gr->rules);
 	gr->rules = NULL;
 	gr->rules_count = 0;
