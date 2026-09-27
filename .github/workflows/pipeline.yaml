@@ -39,12 +39,18 @@ jobs:
           cd ~/graphblas
           sudo make install
 
+      - name: Get LAGraph Commit SHA
+        id: lagraph-sha
+        run: |
+          SHA=$(git ls-remote https://github.com/RodionovMaxim05/LAGraph.git refs/heads/cfl-idr-optimization | awk '{print $1}')
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
       - name: Cache LAGraph
         id: cache-lagraph
         uses: actions/cache@v6
         with:
           path: ~/lagraph
-          key: lagraph-${{ runner.os }}-v1
+          key: lagraph-${{ runner.os }}-${{ steps.lagraph-sha.outputs.sha }}
 
       - name: Clone LAGraph
         if: steps.cache-lagraph.outputs.cache-hit != 'true'
