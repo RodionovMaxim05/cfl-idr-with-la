@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "internal/grb_utils.h"
-#include "uthash.h"
 
 typedef struct {
 	GrB_Index col;
@@ -14,17 +13,51 @@ typedef struct {
 
 typedef struct {
 	uint32_t count;
+	GrB_Index row_offset;
 	FastEntry *entries;
 } FastRow;
 
 typedef struct {
 	FastRow *rows;
 	GrB_Index n;
+	GrB_Index nnz;
+	uint64_t *visited;
 } FastPathsMatrix;
 
 // The threshold for the number of elements in a row to switch from linear to binary
 // search.
 static const uint32_t FAST_PATHS_LINEAR_THRESHOLD = 16;
+
+/**
+ * @brief Tests if a specific bit is set in a bitset array.
+ *
+ * @param[in] b Pointer to the bitset array.
+ * @param[in] p Bit index to test.
+ *
+ * @return `true` if the bit is set, `false` otherwise or if `b` is `NULL`.
+ */
+static inline bool test_bit(const uint64_t *b, GrB_Index p) {
+	if (!b) {
+		return false;
+	}
+	return (b[p >> 6] & (1ULL << (p & 63))) != 0;
+}
+
+/**
+ * @brief Tests and sets a specific bit in a bitset array.
+ *
+ * @param[in,out] b Pointer to the bitset array.
+ * @param[in]     p Bit index to set.
+ *
+ * @return Previous state of the bit before setting (`true` if set, `false`
+ * otherwise).
+ */
+static inline bool test_and_set(uint64_t *b, GrB_Index p) {
+	uint64_t m = 1ULL << (p & 63);
+	bool old = (b[p >> 6] & m) != 0;
+	b[p >> 6] |= m;
+	return old;
+}
 
 /**
  * @brief Comparator for `qsort()` to sort `FastEntry` items by column index.
@@ -45,6 +78,7 @@ static void fast_paths_free(FastPathsMatrix *fmat) {
 		}
 		free(fmat->rows);
 	}
+	free(fmat->visited);
 	free(fmat);
 }
 
@@ -66,6 +100,7 @@ static FastPathsMatrix *fast_paths_build(GrB_Matrix mat, GrB_Index n) {
 		return NULL;
 	}
 	fmat->n = n;
+	fmat->visited = NULL;
 	fmat->rows = calloc(n, sizeof(FastRow));
 	if (!fmat->rows && n > 0) {
 		free(fmat);
@@ -74,8 +109,16 @@ static FastPathsMatrix *fast_paths_build(GrB_Matrix mat, GrB_Index n) {
 
 	GrB_Index nnz = 0;
 	GrB_Matrix_nvals(&nnz, mat);
+	fmat->nnz = nnz;
 	if (nnz == 0) {
 		return fmat;
+	}
+
+	fmat->visited = calloc((size_t)((nnz + 63) / 64), sizeof(uint64_t));
+	if (!fmat->visited) {
+		free(fmat->rows);
+		free(fmat);
+		return NULL;
 	}
 
 	GrB_Index *row_indices = malloc(nnz * sizeof(GrB_Index));
@@ -92,14 +135,17 @@ static FastPathsMatrix *fast_paths_build(GrB_Matrix mat, GrB_Index n) {
 		fmat->rows[row_indices[k]].count++;
 	}
 
-	// Allocate storage for each row's entries
+	// Calculating row_offset and allocating memory for records
+	GrB_Index current_offset = 0;
 	for (GrB_Index r = 0; r < n; r++) {
+		fmat->rows[r].row_offset = current_offset;
 		if (fmat->rows[r].count > 0) {
 			fmat->rows[r].entries = malloc(fmat->rows[r].count * sizeof(FastEntry));
 			if (!fmat->rows[r].entries) {
 				goto fail;
 			}
-			fmat->rows[r].count = 0; // Reset to use as a write cursor below
+			current_offset += fmat->rows[r].count;
+			fmat->rows[r].count = 0;
 		}
 	}
 
@@ -133,17 +179,20 @@ fail:
 }
 
 /**
- * @brief Looks up value at coordinate (i, j) in a `FastPathsMatrix`.
+ * @brief Looks up value at coordinate (i, j) in a `FastPathsMatrix` and returns its
+ * linear index.
  *
- * @param[in]  fmat Input lookup matrix.
- * @param[in]  i    Row index.
- * @param[in]  j    Column index.
- * @param[out] out  Pointer to store the retrieved `AllPathsElem`.
+ * @param[in]  fmat     Input lookup matrix.
+ * @param[in]  i        Row index.
+ * @param[in]  j        Column index.
+ * @param[out] out_idx  Pointer to index of retrieved `AllPathsElem`.
+ * @param[out] out_val  Pointer to value of retrieved `AllPathsElem`.
  *
- * @return `true` if element exists and was written to `out`, `false` otherwise.
+ * @return `true` if element exists, `false` otherwise.
  */
-static bool fast_paths_get(const FastPathsMatrix *fmat, GrB_Index i, GrB_Index j,
-						   AllPathsElem *out) {
+static bool fast_paths_get_with_index(const FastPathsMatrix *fmat, GrB_Index i,
+									  GrB_Index j, GrB_Index *out_idx,
+									  AllPathsElem *out_val) {
 	if (!fmat || i >= fmat->n) {
 		return false;
 	}
@@ -154,29 +203,61 @@ static bool fast_paths_get(const FastPathsMatrix *fmat, GrB_Index i, GrB_Index j
 		return false;
 	}
 
+	int found_k = -1;
+
 	if (count <= FAST_PATHS_LINEAR_THRESHOLD) {
 		for (uint32_t k = 0; k < count; k++) {
 			if (row->entries[k].col == j) {
-				*out = row->entries[k].val;
-				return true;
+				found_k = (int)k;
+				break;
 			}
 		}
+	} else {
+		int low = 0, high = (int)count - 1;
+		while (low <= high) {
+			int mid = low + (high - low) / 2;
+			if (row->entries[mid].col == j) {
+				found_k = mid;
+				break;
+			}
+			if (row->entries[mid].col < j) {
+				low = mid + 1;
+			} else {
+				high = mid - 1;
+			}
+		}
+	}
+
+	if (found_k < 0) {
 		return false;
 	}
 
-	// Binary search
-	int low = 0, high = (int)count - 1;
-	while (low <= high) {
-		int mid = low + (high - low) / 2;
-		if (row->entries[mid].col == j) {
-			*out = row->entries[mid].val;
-			return true;
-		}
-		if (row->entries[mid].col < j) {
-			low = mid + 1;
-		} else {
-			high = mid - 1;
-		}
+	if (out_idx) {
+		*out_idx = row->row_offset + (GrB_Index)found_k;
+	}
+	if (out_val) {
+		*out_val = row->entries[found_k].val;
+	}
+	return true;
+}
+
+/**
+ * @brief Checks if element at coordinate (i, j) has already been visited.
+ *
+ * @param[in] fmat Input lookup matrix.
+ * @param[in] i    Row index.
+ * @param[in] j    Column index.
+ *
+ * @return `true` if element exists and is marked visited, `false` otherwise.
+ */
+static inline bool is_visited(const FastPathsMatrix *fmat, GrB_Index i,
+							  GrB_Index j) {
+	if (!fmat) {
+		return false;
+	}
+	GrB_Index idx;
+	if (fast_paths_get_with_index(fmat, i, j, &idx, NULL)) {
+		return test_bit(fmat->visited, idx);
 	}
 	return false;
 }
@@ -328,18 +409,6 @@ static StackElem stack_pop(Stack *s) { return s->elems[--s->top]; }
 static bool stack_empty(Stack *s) { return s->top == 0; }
 
 typedef struct {
-	GrB_Index i;
-	GrB_Index j;
-	int32_t A;
-	int32_t _pad;
-} VisitedKey;
-
-typedef struct {
-	VisitedKey key;
-	UT_hash_handle hh;
-} VisitedEntry;
-
-typedef struct {
 	int32_t term; // terminal index (prod_A of the rule)
 } TermRule;
 
@@ -410,7 +479,8 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 
 			if (rule.prod_B == -1) {
 				for (int32_t k = 0; k < n; k++) {
-					int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
+					int32_t cur_A =
+						A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
 					idx[cur_A].term_count++;
 				}
 			}
@@ -544,7 +614,6 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 	GrB_Info info = GrB_SUCCESS;
 
 	NontermRules *grammar_idx = NULL;
-	VisitedEntry *visited_ht = NULL;
 	Stack stack = stack_new();
 	GrB_Index *rows = NULL;
 	GrB_Index *cols = NULL;
@@ -652,27 +721,17 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		GrB_Index j = cur.col_idx;
 		int32_t A = cur.nonterm;
 
-		// Hash table search
-		VisitedKey lk = {.i = i, .j = j, .A = A, ._pad = 0};
-		VisitedEntry *found;
-		HASH_FIND(hh, visited_ht, &lk, sizeof(VisitedKey), found);
-		if (found) {
+		FastPathsMatrix *cur_paths = NULL;
+		GRB_TRY(get_fast_paths(&cur_paths, fast_paths, paths, A, n));
+
+		GrB_Index elem_idx;
+		AllPathsElem elem;
+		if (!fast_paths_get_with_index(cur_paths, i, j, &elem_idx, &elem)) {
 			continue;
 		}
 
-		// Add to the hash table
-		VisitedEntry *new_entry = malloc(sizeof(VisitedEntry));
-		if (!new_entry) {
-			info = GrB_OUT_OF_MEMORY;
-			goto cleanup;
-		}
-		new_entry->key = lk;
-		HASH_ADD(hh, visited_ht, key, sizeof(VisitedKey), new_entry);
-
-		AllPathsElem elem;
-		FastPathsMatrix *cur_paths = NULL;
-		GRB_TRY(get_fast_paths(&cur_paths, fast_paths, paths, A, n));
-		if (!fast_paths_get(cur_paths, i, j, &elem)) {
+		// Check and set the 'visited' bit
+		if (test_and_set(cur_paths->visited, elem_idx)) {
 			continue;
 		}
 
@@ -713,19 +772,13 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 
 				// Only push if not already visited - avoids stacking the
 				// same pair multiple times
-				VisitedKey lkB = {i, mid, ri.B, ._pad = 0};
-				VisitedKey lkC = {mid, j, ri.C, ._pad = 0};
-				VisitedEntry *fB, *fC;
-				HASH_FIND(hh, visited_ht, &lkB, sizeof(VisitedKey), fB);
-				HASH_FIND(hh, visited_ht, &lkC, sizeof(VisitedKey), fC);
-
-				if (!fB) {
+				if (!is_visited(fast_paths[ri.B], i, mid)) {
 					if (!stack_push(&stack, i, mid, ri.B)) {
 						info = GrB_OUT_OF_MEMORY;
 						goto cleanup;
 					}
 				}
-				if (!fC) {
+				if (!is_visited(fast_paths[ri.C], mid, j)) {
 					if (!stack_push(&stack, mid, j, ri.C)) {
 						info = GrB_OUT_OF_MEMORY;
 						goto cleanup;
@@ -751,11 +804,6 @@ cleanup:
 	free(grammar_to_straight);
 	free(rows);
 	free(cols);
-	VisitedEntry *curr_entry, *tmp_entry;
-	HASH_ITER(hh, visited_ht, curr_entry, tmp_entry) {
-		HASH_DEL(visited_ht, curr_entry);
-		free(curr_entry);
-	}
 	free_grammar_index(grammar_idx, grammar.nonterms_count);
 	stack_free(&stack);
 	return info;
