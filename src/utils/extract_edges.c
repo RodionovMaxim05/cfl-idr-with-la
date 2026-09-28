@@ -344,15 +344,8 @@ typedef struct {
 } TermRule;
 
 typedef struct {
-	int32_t B; // left nonterminal (prod_A of the rule)
-	int32_t C; // right nonterminal (prod_B of the rule)
-} BinaryRule;
-
-typedef struct {
 	TermRule *term_rules;
 	int32_t term_count;
-	BinaryRule *binary_rules;
-	int32_t binary_count;
 } NontermRules;
 
 /**
@@ -409,26 +402,16 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	for (int64_t r = 0; r < g->rules_count; r++) {
 		LAGraph_rule_EWCNF rule = g->rules[r];
 
-		if (rule.xor_routing != NULL) {
-			XorFamilyRouting *rt = rule.xor_routing;
-			for (int64_t idx_m = 0; idx_m < rt->active_masks_count; idx_m++) {
-				for (int64_t m = 0; m < rt->N; m++) {
-					int32_t cur_A = rt->S_target_base + (int32_t)(m * rt->S_stride);
-					idx[cur_A].binary_count++;
-				}
-			}
-		} else if (rule.prod_A != -1) {
+		if (rule.xor_routing == NULL && rule.prod_A != -1) {
 			int32_t A = rule.nonterm;
 			uint32_t count = rule.indexed_count;
 			uint32_t flags = rule.indexed;
 			int32_t n = (count > 0) ? (int32_t)count : 1;
 
-			for (int32_t k = 0; k < n; k++) {
-				int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
-				if (rule.prod_B == -1) {
+			if (rule.prod_B == -1) {
+				for (int32_t k = 0; k < n; k++) {
+					int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
 					idx[cur_A].term_count++;
-				} else {
-					idx[cur_A].binary_count++;
 				}
 			}
 		}
@@ -442,45 +425,17 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 				goto oom;
 			}
 		}
-		if (idx[a].binary_count) {
-			idx[a].binary_rules =
-				malloc((size_t)idx[a].binary_count * sizeof(BinaryRule));
-			if (!idx[a].binary_rules) {
-				goto oom;
-			}
-		}
 		// Reset - reuse as write cursor
 		idx[a].term_count = 0;
-		idx[a].binary_count = 0;
 	}
 
 	// Fill pass
 	for (int64_t r = 0; r < g->rules_count; r++) {
 		LAGraph_rule_EWCNF rule = g->rules[r];
 
-		if (rule.xor_routing != NULL) {
-			XorFamilyRouting *rt = rule.xor_routing;
-			for (int64_t idx_m = 0; idx_m < rt->active_masks_count; idx_m++) {
-				int64_t im = rt->active_masks[idx_m];
-				int32_t p_id = rt->p_ids[idx_m];
-
-				for (int64_t m = 0; m < rt->N; m++) {
-					int64_t next = m ^ im;
-					int32_t cur_A = rt->S_target_base + (int32_t)(m * rt->S_stride);
-					int32_t cur_pA = p_id;
-					int32_t cur_pB =
-						rt->S_operand_base + (int32_t)(next * rt->S_stride);
-
-					BinaryRule *br =
-						&idx[cur_A].binary_rules[idx[cur_A].binary_count++];
-					br->B = cur_pA;
-					br->C = cur_pB;
-				}
-			}
-		} else if (rule.prod_A != -1) {
+		if (rule.xor_routing == NULL && rule.prod_A != -1 && rule.prod_B == -1) {
 			int32_t A = rule.nonterm;
 			int32_t prod_A = rule.prod_A;
-			int32_t prod_B = rule.prod_B;
 			uint32_t count = rule.indexed_count;
 			uint32_t flags = rule.indexed;
 			int32_t n = (count > 0) ? (int32_t)count : 1;
@@ -489,19 +444,8 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 				int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
 				int32_t cur_pA =
 					prod_A + ((flags & LAGraph_EWNCF_INDEX_PROD_A) ? k : 0);
-				int32_t cur_pB =
-					(prod_B != -1 && (flags & LAGraph_EWNCF_INDEX_PROD_B))
-						? prod_B + k
-						: prod_B;
 
-				if (cur_pB == -1) {
-					idx[cur_A].term_rules[idx[cur_A].term_count++].term = cur_pA;
-				} else {
-					BinaryRule *br =
-						&idx[cur_A].binary_rules[idx[cur_A].binary_count++];
-					br->B = cur_pA;
-					br->C = cur_pB;
-				}
+				idx[cur_A].term_rules[idx[cur_A].term_count++].term = cur_pA;
 			}
 		}
 	}
@@ -511,7 +455,6 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 oom:
 	for (int32_t a = 0; a < g->nonterms_count; a++) {
 		free(idx[a].term_rules);
-		free(idx[a].binary_rules);
 	}
 	free(idx);
 	return NULL;
@@ -523,7 +466,6 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	}
 	for (int32_t a = 0; a < nonterms_count; a++) {
 		free(idx[a].term_rules);
-		free(idx[a].binary_rules);
 	}
 	free(idx);
 }
