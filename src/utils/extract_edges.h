@@ -45,6 +45,7 @@ typedef struct {
  *                           caller or set to `NULL` pointers.
  * @param[in]  paths         Array of `grammar.nonterms_count` CFL-reachability
  *                           result matrices from `LAGraph_CFL_AllPaths`.
+ * @param[in]  rule_table    Binary rule table for derivation tracing.
  * @param[in]  adj_matrices  Input adjacency matrices for each terminal symbol.
  * @param[in]  grammar       Grammar specification.
  * @param[in]  n             Number of vertices (matrix dimension).

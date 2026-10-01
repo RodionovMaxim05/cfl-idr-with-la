@@ -98,7 +98,7 @@ static void free_refined_result(MRRefinedResult *r) {
 				GrB_free(&r->edges[i]);
 			}
 		}
-		free(r->edges);
+		free((void *)r->edges);
 	}
 	if (r->reachability != NULL) {
 		GrB_free(&r->reachability);

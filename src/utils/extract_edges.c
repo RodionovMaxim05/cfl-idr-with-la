@@ -707,8 +707,10 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		cols = NULL;
 	}
 
-	fast_paths = calloc(grammar.nonterms_count, sizeof(FastPathsMatrix *));
-	fast_adj = calloc(grammar.terms_count, sizeof(FastBoolMatrix *));
+	fast_paths = (FastPathsMatrix **)calloc(grammar.nonterms_count,
+											sizeof(FastPathsMatrix *));
+	fast_adj =
+		(FastPathsMatrix **)calloc(grammar.terms_count, sizeof(FastBoolMatrix *));
 	if (!fast_paths || !fast_adj) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
@@ -793,13 +795,13 @@ cleanup:
 		for (int32_t a = 0; a < grammar.nonterms_count; a++) {
 			fast_paths_free(fast_paths[a]);
 		}
-		free(fast_paths);
+		free((void *)fast_paths);
 	}
 	if (fast_adj) {
 		for (int64_t t = 0; t < grammar.terms_count; t++) {
 			fast_bool_free(fast_adj[t]);
 		}
-		free(fast_adj);
+		free((void *)fast_adj);
 	}
 	free(grammar_to_straight);
 	free(rows);

@@ -193,4 +193,4 @@ GrB_Info mr_cache_insert_raw(MRCache *c, uint64_t graph_key, uint32_t grammar_ta
  */
 GrB_Info mr_cache_insert_refined(MRCache *c, uint64_t graph_key,
 								 uint32_t grammar_tag, GrB_Matrix *edges,
-								 int64_t symbols_amount, GrB_Matrix reachability);
+								 int64_t edges_count, GrB_Matrix reachability);

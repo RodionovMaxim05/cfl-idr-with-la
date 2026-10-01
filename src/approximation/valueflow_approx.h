@@ -26,6 +26,7 @@
  * @param[in]     paths        Array of CFL-reachability output matrices (one per
  *                             grammar nonterminal). Must have at least
  *                             `grammar.nonterms_count` elements.
+ * @param[in]     rule_table   Binary rule table for derivation tracing.
  * @param[in]     adj_matrices Input adjacency matrices for edge extraction.
  * @param[in]     grammar      Grammar specification used in the CFL analysis.
  * @param[in]     comp         Component graph being analyzed. Used for metadata
