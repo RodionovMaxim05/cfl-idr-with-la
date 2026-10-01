@@ -52,5 +52,5 @@ format:
 lint:
 	find . -type f -name "*.c" \
 		-not \( -path "./tests/*" -o -path "./build/*" -o -path "./vendor/*" \
-		        -o -name "convert_graph.c" -o -name "extract_edges.c" \) \
+		        -o -name "convert_graph.c" \) \
 	| xargs clang-tidy -p ./build
