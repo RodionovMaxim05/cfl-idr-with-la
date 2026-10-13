@@ -8,10 +8,25 @@
 #include "graph/remove_not_path.h"
 #include "graph/split_into_components.h"
 #include "internal/grb_utils.h"
+#include "internal/system_memory.h"
 #include "mr_cache.h"
 #include "mutual_refinement.h"
 #include "utils/extract_edges.h"
 #include "utils/extract_paths.h"
+
+/**
+ * @brief Global threshold for system memory critical check (in percent).
+ *
+ * TODO: Consider refactoring this to pass it as a parameter to `idr_get_on_demand`.
+ */
+#define RAM_BUDGET_PERCENT 90
+
+/**
+ * @brief The maximum number of raw elements in the cache; if this limit is exceeded,
+ * the cache is forcibly flushed under low-memory conditions (if the system memory
+ * check function returns an "unavailable" status or an error code of -1).
+ */
+#define DEFAULT_RAW_COUNT_THRESHOLD 40
 
 /**
  * @brief Computes the set of paths that are in the over-approximation but not
@@ -52,15 +67,18 @@ cleanup:
  * 5. Confirmed paths are merged back into the result via matrix multiplication
  *    with the component mapping matrix `S`.
  *
- * @param[out] result        On success, a newly allocated `GrB_Matrix` (n × n,
- *                           `GrB_BOOL`) with the refined reachability result.
- * @param[in]  graph         Original input graph. Must not be `NULL`.
- * @param[in]  under_approx  Current under-approximation matrix. Must not be `NULL`.
- * @param[in]  over_approx   Current over-approximation matrix. Must not be `NULL`.
- * @param[in]  grammar_type  Grammar variant for refinement (see `IdrGrammarType`).
- * @param[in]  valueflow     If `true`, apply value-flow specific constraints.
- * @param[in]  filter_empty  If `true`, filter empty parenthesis/bracket pairs
- *                           during graph construction.
+ * @param[out] result             On success, a newly allocated `GrB_Matrix` (n × n,
+ *                                `GrB_BOOL`) with the refined reachability result.
+ * @param[in]  graph              Original input graph.
+ * @param[in]  under_approx       Current under-approximation matrix.
+ * @param[in]  over_approx        Current over-approximation matrix.
+ * @param[in]  grammar_type       Grammar variant for refinement (see
+ *                                `IdrGrammarType`).
+ * @param[in]  valueflow          If `true`, apply value-flow specific constraints.
+ * @param[in]  filter_empty       If `true`, filter empty parenthesis/bracket pairs
+ *                                during graph construction.
+ * @param[in]  ram_budget_percent Maximum percent of RAM that may be in use before
+ *                                the cache is dropped (1..100).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
  */
@@ -68,7 +86,8 @@ static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph
 									   GrB_Matrix under_approx,
 									   GrB_Matrix over_approx,
 									   IdrGrammarType grammar_type, bool valueflow,
-									   bool filter_empty) {
+									   bool filter_empty,
+									   unsigned int ram_budget_percent) {
 	GrB_Info info = GrB_SUCCESS;
 
 	MRCache cache = {0};
@@ -152,8 +171,15 @@ static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph
 											  root_candidates));
 
 		for (GrB_Index i = 0; i < n_root_pairs; i++) {
-			if (i % 10 == 0) {
-				mr_cache_free(&cache);
+			if (cache.raw_count > 0) {
+				int memory_status = is_system_memory_critical(ram_budget_percent);
+				if (memory_status == 1 ||
+					(memory_status == -1 &&
+					 cache.raw_count >= DEFAULT_RAW_COUNT_THRESHOLD)) {
+					mr_cache_free(&cache);
+					mr_cache_init(&cache);
+					release_unused_memory_to_os();
+				}
 			}
 
 			GrB_Index src = r_rows[i];
@@ -237,8 +263,8 @@ GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 	}
 
 	GRB_TRY(refine_mr_with_grammar(&default_paths, &reduced1, under_approx,
-								   over_approx, IDR_DEFAULT, valueflow,
-								   filter_empty));
+								   over_approx, IDR_DEFAULT, valueflow, filter_empty,
+								   RAM_BUDGET_PERCENT));
 
 	if (parity_d) {
 		*result = default_paths;
@@ -261,7 +287,8 @@ GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 	}
 
 	GRB_TRY(refine_mr_with_grammar(&final_paths, &reduced2, under_approx,
-								   default_paths, IDR_ALL, valueflow, filter_empty));
+								   default_paths, IDR_ALL, valueflow, filter_empty,
+								   RAM_BUDGET_PERCENT));
 
 	*result = final_paths;
 	final_paths = NULL;
