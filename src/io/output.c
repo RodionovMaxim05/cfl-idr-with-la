@@ -51,5 +51,11 @@ void resolve_output_path(const Args *args, char *output_file, size_t size) {
 
 	const char *dir = args->output_path ? args->output_path : DEFAULT_OUTPUT_DIR;
 	mkdir(dir, 0755);
-	snprintf(output_file, size, "%s/%s.out", dir, benchmark_name);
+
+	size_t len = strlen(dir);
+	if (len > 0 && dir[len - 1] == '/') {
+		snprintf(output_file, size, "%s%s.out", dir, benchmark_name);
+	} else {
+		snprintf(output_file, size, "%s/%s.out", dir, benchmark_name);
+	}
 }
