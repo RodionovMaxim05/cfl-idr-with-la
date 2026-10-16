@@ -471,18 +471,15 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	for (int64_t r = 0; r < g->rules_count; r++) {
 		LAGraph_rule_EWCNF rule = g->rules[r];
 
-		if (rule.xor_routing == NULL && rule.prod_A != -1) {
+		if (rule.pat == NULL && rule.prod_A != -1 && rule.prod_B == -1) {
 			int32_t A = rule.nonterm;
 			uint32_t count = rule.indexed_count;
 			uint32_t flags = rule.indexed;
 			int32_t n = (count > 0) ? (int32_t)count : 1;
 
-			if (rule.prod_B == -1) {
-				for (int32_t k = 0; k < n; k++) {
-					int32_t cur_A =
-						A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
-					idx[cur_A].term_count++;
-				}
+			for (int32_t k = 0; k < n; k++) {
+				int32_t cur_A = A + ((flags & LAGraph_EWNCF_INDEX_NONTERM) ? k : 0);
+				idx[cur_A].term_count++;
 			}
 		}
 	}
@@ -503,7 +500,7 @@ static NontermRules *build_grammar_index(const MRGrammar_t *g) {
 	for (int64_t r = 0; r < g->rules_count; r++) {
 		LAGraph_rule_EWCNF rule = g->rules[r];
 
-		if (rule.xor_routing == NULL && rule.prod_A != -1 && rule.prod_B == -1) {
+		if (rule.pat == NULL && rule.prod_A != -1 && rule.prod_B == -1) {
 			int32_t A = rule.nonterm;
 			int32_t prod_A = rule.prod_A;
 			uint32_t count = rule.indexed_count;

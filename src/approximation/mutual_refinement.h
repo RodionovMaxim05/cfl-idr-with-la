@@ -14,6 +14,7 @@
 #define OPT_FORMAT (1 << 1)
 #define OPT_LAZY (1 << 2)
 #define OPT_BLOCK (1 << 3)
+#define OPT_PAT (1 << 4)
 
 /**
  * @brief Computes a refined over-approximation of reachable paths using the
