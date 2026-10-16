@@ -54,6 +54,29 @@ static inline MRGrammar_t make_grammar(int64_t rules_count, int64_t terms_count,
 	return gr;
 }
 
+static inline LAGraph_rule_Pat *pat_new(LAGraph_rule_Pat d) {
+	LAGraph_rule_Pat *p = (LAGraph_rule_Pat *)malloc(sizeof(*p));
+	if (p)
+		*p = d;
+	return p;
+}
+
+static const LAGraph_Pat_state_map *pat_map_new(uint32_t nnz,
+                                              const LAGraph_Pat_state_entry *src) {
+    LAGraph_Pat_state_map *m = (LAGraph_Pat_state_map *)malloc(sizeof(*m));
+    LAGraph_Pat_state_entry *e =
+        (LAGraph_Pat_state_entry *)malloc((nnz ? nnz : 1) * sizeof(*e));
+    if (m == NULL || e == NULL) {
+        free(m);
+        free(e);
+        return NULL;
+    }
+    memcpy(e, src, nnz * sizeof(*e));
+    m->nnz = nnz;
+    m->entries = e;
+    return m;
+}
+
 /**
  * Creates a basic Dyck grammar that accepts properly nested parenthesis and bracket
  * sequences.

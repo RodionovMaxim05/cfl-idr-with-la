@@ -50,19 +50,36 @@ MRGrammar_t get_beta_grammar(IdrGrammarType grammar_type, int64_t n_par,
 	}
 }
 
-void grammar_free(MRGrammar_t *gr) {
-	if (!gr) {
+static void pat_free(LAGraph_rule_Pat *pat) {
+	if (!pat) {
 		return;
 	}
-	for (int64_t i = 0; i < gr->rules_count; i++) {
-		if (gr->rules[i].xor_routing == NULL) {
-			continue;
-		}
-		free(gr->rules[i].xor_routing->active_masks);
-		free(gr->rules[i].xor_routing->p_ids);
-		free(gr->rules[i].xor_routing);
-		gr->rules[i].xor_routing = NULL;
+
+	if (pat->state) {
+		free((void *)pat->state->entries);
+		free((void *)pat->state);
 	}
+	free(pat);
+}
+
+void grammar_free(MRGrammar_t *gr) {
+	if (!gr || !gr->rules) {
+		return;
+	}
+
+	for (int64_t i = 0; i < gr->rules_count; i++) {
+		LAGraph_rule_Pat *pat = (LAGraph_rule_Pat *)gr->rules[i].pat;
+		if (pat != NULL) {
+			for (int64_t j = i + 1; j < gr->rules_count; j++) {
+				if (gr->rules[j].pat == pat) {
+					gr->rules[j].pat = NULL;
+				}
+			}
+			pat_free(pat);
+			gr->rules[i].pat = NULL;
+		}
+	}
+
 	free(gr->rules);
 	gr->rules = NULL;
 	gr->rules_count = 0;

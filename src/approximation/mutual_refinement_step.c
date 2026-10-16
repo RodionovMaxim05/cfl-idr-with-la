@@ -123,7 +123,7 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		GRB_TRY(LAGraph_CFL_AllPaths_adv(
 			paths, &all_paths_t, &rule_table, adj,
 			grammar.nonterms_count + grammar.terms_count, grammar.rules,
-			grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK));
+			grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK | OPT_PAT));
 
 		raw_ready = true;
 		raw_res = paths;
