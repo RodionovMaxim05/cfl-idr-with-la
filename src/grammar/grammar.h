@@ -62,19 +62,19 @@ static inline LAGraph_rule_Pat *pat_new(LAGraph_rule_Pat d) {
 }
 
 static const LAGraph_Pat_state_map *pat_map_new(uint32_t nnz,
-                                              const LAGraph_Pat_state_entry *src) {
-    LAGraph_Pat_state_map *m = (LAGraph_Pat_state_map *)malloc(sizeof(*m));
-    LAGraph_Pat_state_entry *e =
-        (LAGraph_Pat_state_entry *)malloc((nnz ? nnz : 1) * sizeof(*e));
-    if (m == NULL || e == NULL) {
-        free(m);
-        free(e);
-        return NULL;
-    }
-    memcpy(e, src, nnz * sizeof(*e));
-    m->nnz = nnz;
-    m->entries = e;
-    return m;
+												const LAGraph_Pat_state_entry *src) {
+	LAGraph_Pat_state_map *m = (LAGraph_Pat_state_map *)malloc(sizeof(*m));
+	LAGraph_Pat_state_entry *e =
+		(LAGraph_Pat_state_entry *)malloc((nnz ? nnz : 1) * sizeof(*e));
+	if (m == NULL || e == NULL) {
+		free(m);
+		free(e);
+		return NULL;
+	}
+	memcpy(e, src, nnz * sizeof(*e));
+	m->nnz = nnz;
+	m->entries = e;
+	return m;
 }
 
 /**

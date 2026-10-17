@@ -522,7 +522,8 @@ MRGrammar_t dyck_alpha_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 	LAGraph_Pat_role S_role = {LAGraph_PAT_SYM_S, S_base, (int64_t)R * (int64_t)R,
 							   (int64_t)R, 1};
 	LAGraph_Pat_role E_role = {LAGraph_PAT_SYM_PATILY, E_base,
-							   (int64_t)R * (int64_t)R * n_par, (int64_t)R * n_par, n_par};
+							   (int64_t)R * (int64_t)R * n_par, (int64_t)R * n_par,
+							   n_par};
 	LAGraph_Pat_role G_role = {LAGraph_PAT_SYM_PATILY, G_base,
 							   (int64_t)R * (int64_t)R * n_par, (int64_t)R * n_par,
 							   n_par};
