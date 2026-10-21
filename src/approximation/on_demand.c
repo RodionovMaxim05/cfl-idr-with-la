@@ -15,13 +15,6 @@
 #include "utils/extract_paths.h"
 
 /**
- * @brief Global threshold for system memory critical check (in percent).
- *
- * TODO: Consider refactoring this to pass it as a parameter to `idr_get_on_demand`.
- */
-#define RAM_BUDGET_PERCENT 90
-
-/**
  * @brief The maximum number of raw elements in the cache; if this limit is exceeded,
  * the cache is forcibly flushed under low-memory conditions (if the system memory
  * check function returns an "unavailable" status or an error code of -1).
@@ -177,8 +170,8 @@ static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph
 					(memory_status == -1 &&
 					 cache.raw_count >= DEFAULT_RAW_COUNT_THRESHOLD)) {
 					mr_cache_free(&cache);
-					mr_cache_init(&cache);
 					release_unused_memory_to_os();
+					mr_cache_init(&cache);
 				}
 			}
 

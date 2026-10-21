@@ -1,6 +1,13 @@
 #pragma once
 
 /**
+ * @brief Global threshold for system memory critical check (in percent).
+ *
+ * TODO: Consider refactoring this to pass it as a parameter to.
+ */
+#define RAM_BUDGET_PERCENT 90
+
+/**
  * @brief Checks whether the memory in use exceeds the configured budget.
  *
  * "In use" is measured as the complement of the memory that the OS can still hand
