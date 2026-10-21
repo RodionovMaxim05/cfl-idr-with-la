@@ -4,6 +4,7 @@
 
 #include "idr_graph.h"
 #include "internal/grb_utils.h"
+#include "internal/system_memory.h"
 #include "mutual_refinement.h"
 #include "utils/extract_paths.h"
 
@@ -113,6 +114,15 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		raw_res = raw_hit->matrices;
 		rule_table = raw_hit->rule_table;
 	} else {
+		if (cache->raw_count + cache->refined_count > 0) {
+			int memory_status = is_system_memory_critical(RAM_BUDGET_PERCENT);
+			if (memory_status == 1) {
+				mr_cache_free(cache);
+				release_unused_memory_to_os();
+				mr_cache_init(cache);
+			}
+		}
+
 		paths = (GrB_Matrix *)calloc(grammar.nonterms_count + grammar.terms_count,
 									 sizeof(GrB_Matrix));
 		if (!paths) {
