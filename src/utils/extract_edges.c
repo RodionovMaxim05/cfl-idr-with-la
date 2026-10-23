@@ -1,47 +1,31 @@
 #include "extract_edges.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "internal/grb_utils.h"
 
-typedef struct {
-	GrB_Index col;
-	AllPathsElem val;
-} FastEntry;
-
-typedef struct {
-	uint32_t count;
-	GrB_Index row_offset;
-	FastEntry *entries;
-} FastRow;
-
-typedef struct {
-	FastRow *rows;
-	GrB_Index n;
-	GrB_Index nnz;
-	uint64_t *visited;
-} FastPathsMatrix;
-
-// The threshold for the number of elements in a row to switch from linear to binary
-// search.
-static const uint32_t FAST_PATHS_LINEAR_THRESHOLD = 16;
-
 /**
- * @brief Tests if a specific bit is set in a bitset array.
+ * @brief Lightweight zero-copy CSR view of a nonterminal path matrix.
  *
- * @param[in] b Pointer to the bitset array.
- * @param[in] p Bit index to test.
- *
- * @return `true` if the bit is set, `false` otherwise or if `b` is `NULL`.
+ * Wraps unpacked GraphBLAS CSR array pointers for direct element lookup and tracks
+ * visited matrix entries using a bitset to prevent redundant traversals during DFS.
  */
-static inline bool test_bit(const uint64_t *b, GrB_Index p) {
-	if (!b) {
-		return false;
-	}
-	return (b[p >> 6] & (1ULL << (p & 63))) != 0;
-}
+typedef struct {
+	GrB_Matrix mat;	   // Handle to the underlying GraphBLAS matrix
+	GrB_Index *Ap;	   // CSR row pointers array
+	GrB_Index *Aj;	   // CSR column indices array
+	AllPathsElem *Ax;  // Array of path reconstruction elements
+	GrB_Index Ap_size; // Allocated size of row pointers array
+	GrB_Index Aj_size; // Allocated size of column indices array
+	GrB_Index Ax_size; // Allocated size of element values array
+	bool iso;		   // True if all non-zero entries share a single iso-value
+	uint64_t *visited; // Bitset tracking visited non-zero entries (1 bit per entry)
+	GrB_Index n;	   // Number of vertices in the graph
+	GrB_Index nnz;	   // Total number of non-zero entries in the matrix
+} PathsView;
 
 /**
  * @brief Tests and sets a specific bit in a bitset array.
@@ -60,347 +44,136 @@ static inline bool test_and_set(uint64_t *b, GrB_Index p) {
 }
 
 /**
- * @brief Comparator for `qsort()` to sort `FastEntry` items by column index.
+ * @brief Packs the matrix back to GraphBLAS ownership and frees internal view
+ * resources.
+ *
+ * @param[in,out] v Pointer to the `PathsView` to close.
  */
-static int compare_fast_entries(const void *a, const void *b) {
-	GrB_Index ca = ((const FastEntry *)a)->col;
-	GrB_Index cb = ((const FastEntry *)b)->col;
-	return (ca > cb) - (ca < cb);
-}
-
-static void fast_paths_free(FastPathsMatrix *fmat) {
-	if (!fmat) {
-		return;
+static void paths_view_close(PathsView *v) {
+	if (v && v->Ap) {
+		GxB_Matrix_pack_CSR(v->mat, &v->Ap, &v->Aj, (void **)&v->Ax, v->Ap_size,
+							v->Aj_size, v->Ax_size, v->iso, false, NULL);
+		free(v->visited);
+		v->visited = NULL;
+		v->Ap = NULL;
+		v->Aj = NULL;
+		v->Ax = NULL;
 	}
-	if (fmat->rows) {
-		for (GrB_Index r = 0; r < fmat->n; r++) {
-			free(fmat->rows[r].entries);
-		}
-		free(fmat->rows);
-	}
-	free(fmat->visited);
-	free(fmat);
 }
 
 /**
- * @brief Builds a fast row-oriented lookup structure for a sparse path matrix.
+ * @brief Unpacks a GraphBLAS CSR structure into a lightweight zero-copy view.
  *
- * Extracts tuples from `mat`, groups entries by row, and sorts each row by column
- * index to allow fast binary search lookups.
+ * @param[out] v         Pointer to the target `PathsView` structure.
+ * @param[in]  mat       GraphBLAS matrix to unpack.
+ * @param[in]  num_nodes Total number of vertices in the graph.
  *
- * @param[in] mat Source GraphBLAS matrix containing path elements.
- * @param[in] n   Matrix dimension (number of rows/cols).
- *
- * @return Pointer to newly allocated `FastPathsMatrix`, or `NULL` on allocation
- * failure.
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
-static FastPathsMatrix *fast_paths_build(GrB_Matrix mat, GrB_Index n) {
-	FastPathsMatrix *fmat = malloc(sizeof(FastPathsMatrix));
-	if (!fmat) {
-		return NULL;
-	}
-	fmat->n = n;
-	fmat->visited = NULL;
-	fmat->rows = calloc(n, sizeof(FastRow));
-	if (!fmat->rows && n > 0) {
-		free(fmat);
-		return NULL;
-	}
+static GrB_Info paths_view_open(PathsView *v, GrB_Matrix mat, GrB_Index n) {
+	GrB_Info info = GrB_SUCCESS;
+	memset(v, 0, sizeof(*v));
+	v->mat = mat;
+	v->n = n;
+	GRB_TRY(GrB_Matrix_wait(mat, GrB_MATERIALIZE));
 
-	GrB_Index nnz = 0;
-	GrB_Matrix_nvals(&nnz, mat);
-	fmat->nnz = nnz;
-	if (nnz == 0) {
-		return fmat;
-	}
+	bool jumbled = false;
+	GRB_TRY(GxB_Matrix_unpack_CSR(mat, &v->Ap, &v->Aj, (void **)&v->Ax, &v->Ap_size,
+								  &v->Aj_size, &v->Ax_size, &v->iso, &jumbled,
+								  NULL));
 
-	fmat->visited = calloc((size_t)((nnz + 63) / 64), sizeof(uint64_t));
-	if (!fmat->visited) {
-		free(fmat->rows);
-		free(fmat);
-		return NULL;
-	}
-
-	GrB_Index *row_indices = malloc(nnz * sizeof(GrB_Index));
-	GrB_Index *col_indices = malloc(nnz * sizeof(GrB_Index));
-	AllPathsElem *values = malloc(nnz * sizeof(AllPathsElem));
-	if (!row_indices || !col_indices || !values) {
-		goto fail;
-	}
-
-	GrB_Matrix_extractTuples_UDT(row_indices, col_indices, values, &nnz, mat);
-
-	// Count the elements in each row
-	for (GrB_Index k = 0; k < nnz; k++) {
-		fmat->rows[row_indices[k]].count++;
-	}
-
-	// Calculating row_offset and allocating memory for records
-	GrB_Index current_offset = 0;
-	for (GrB_Index r = 0; r < n; r++) {
-		fmat->rows[r].row_offset = current_offset;
-		if (fmat->rows[r].count > 0) {
-			fmat->rows[r].entries = malloc(fmat->rows[r].count * sizeof(FastEntry));
-			if (!fmat->rows[r].entries) {
-				goto fail;
-			}
-			current_offset += fmat->rows[r].count;
-			fmat->rows[r].count = 0;
+	v->nnz = v->Ap[n];
+	if (v->nnz > 0) {
+		v->visited = calloc((size_t)((v->nnz + 63) / 64), sizeof(uint64_t));
+		if (!v->visited) {
+			info = GrB_OUT_OF_MEMORY;
+			goto cleanup;
 		}
 	}
+	return GrB_SUCCESS;
 
-	// Fill each row's entries from the extracted tuples
-	for (GrB_Index k = 0; k < nnz; k++) {
-		GrB_Index r = row_indices[k];
-		uint32_t idx = fmat->rows[r].count++;
-		fmat->rows[r].entries[idx] =
-			(FastEntry){.col = col_indices[k], .val = values[k]};
-	}
-
-	// Sorting columns for binary search
-	for (GrB_Index r = 0; r < n; r++) {
-		if (fmat->rows[r].count > 1) {
-			qsort(fmat->rows[r].entries, fmat->rows[r].count, sizeof(FastEntry),
-				  compare_fast_entries);
-		}
-	}
-
-	free(row_indices);
-	free(col_indices);
-	free(values);
-	return fmat;
-
-fail:
-	free(row_indices);
-	free(col_indices);
-	free(values);
-	fast_paths_free(fmat);
-	return NULL;
+cleanup:
+	paths_view_close(v);
+	return info;
 }
 
 /**
- * @brief Looks up value at coordinate (i, j) in a `FastPathsMatrix` and returns its
- * linear index.
+ * @brief Looks up a column index `col_idx` in row `row_idx` via binary search on CSR
+ * `Aj` array.
  *
- * @param[in]  fmat     Input lookup matrix.
- * @param[in]  i        Row index.
- * @param[in]  j        Column index.
- * @param[out] out_idx  Pointer to index of retrieved `AllPathsElem`.
- * @param[out] out_val  Pointer to value of retrieved `AllPathsElem`.
+ * @param[in]  v       Pointer to the open `PathsView`.
+ * @param[in]  row_idx Index of the row (source vertex).
+ * @param[in]  col_idx Index of the column (target vertex).
+ * @param[out] out_idx Optional pointer to store the linear element index if found.
  *
- * @return `true` if element exists, `false` otherwise.
+ * @return `true` if the entry exists in the matrix view, `false` otherwise.
  */
-static bool fast_paths_get_with_index(const FastPathsMatrix *fmat, GrB_Index i,
-									  GrB_Index j, GrB_Index *out_idx,
-									  AllPathsElem *out_val) {
-	if (!fmat || i >= fmat->n) {
-		return false;
-	}
-	const FastRow *row = &fmat->rows[i];
-	uint32_t count = row->count;
-
-	if (count == 0) {
+static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
+										GrB_Index col_idx, GrB_Index *out_idx) {
+	if (!v || !v->Ap || row_idx >= v->n) {
 		return false;
 	}
 
-	int found_k = -1;
+	GrB_Index lo = v->Ap[row_idx];
+	GrB_Index hi = v->Ap[row_idx + 1];
+	GrB_Index end = hi;
 
-	if (count <= FAST_PATHS_LINEAR_THRESHOLD) {
-		for (uint32_t k = 0; k < count; k++) {
-			if (row->entries[k].col == j) {
-				found_k = (int)k;
-				break;
-			}
-		}
-	} else {
-		int low = 0, high = (int)count - 1;
-		while (low <= high) {
-			int mid = low + (high - low) / 2;
-			if (row->entries[mid].col == j) {
-				found_k = mid;
-				break;
-			}
-			if (row->entries[mid].col < j) {
-				low = mid + 1;
-			} else {
-				high = mid - 1;
-			}
+	while (lo < hi) {
+		GrB_Index m = lo + (hi - lo) / 2;
+		if (v->Aj[m] < col_idx) {
+			lo = m + 1;
+		} else {
+			hi = m;
 		}
 	}
 
-	if (found_k < 0) {
-		return false;
-	}
-
-	if (out_idx) {
-		*out_idx = row->row_offset + (GrB_Index)found_k;
-	}
-	if (out_val) {
-		*out_val = row->entries[found_k].val;
-	}
-	return true;
-}
-
-/**
- * @brief Checks if element at coordinate (i, j) has already been visited.
- *
- * @param[in] fmat Input lookup matrix.
- * @param[in] i    Row index.
- * @param[in] j    Column index.
- *
- * @return `true` if element exists and is marked visited, `false` otherwise.
- */
-static inline bool is_visited(const FastPathsMatrix *fmat, GrB_Index i,
-							  GrB_Index j) {
-	if (!fmat) {
-		return false;
-	}
-	GrB_Index idx;
-	if (fast_paths_get_with_index(fmat, i, j, &idx, NULL)) {
-		return test_bit(fmat->visited, idx);
+	if (lo < end && v->Aj[lo] == col_idx) {
+		if (out_idx) {
+			*out_idx = lo;
+		}
+		return true;
 	}
 	return false;
 }
 
-typedef struct {
-	uint32_t count;
-	GrB_Index *cols;
-} FastBoolRow;
-
-typedef struct {
-	FastBoolRow *rows;
-	GrB_Index n;
-} FastBoolMatrix;
-
-static void fast_bool_free(FastBoolMatrix *fmat) {
-	if (!fmat) {
-		return;
-	}
-	if (fmat->rows) {
-		for (GrB_Index r = 0; r < fmat->n; r++) {
-			free(fmat->rows[r].cols);
-		}
-		free(fmat->rows);
-	}
-	free(fmat);
-}
-
 /**
- * @brief Builds a fast row-oriented lookup structure for a boolean adjacency matrix.
+ * @brief Element stored in the explicit DFS extraction stack.
  *
- * @param[in] mat Source GraphBLAS boolean matrix.
- * @param[in] n   Matrix dimension.
- *
- * @return Pointer to `FastBoolMatrix`, or `NULL` on allocation failure.
+ * Captures a single step in the CFG path reconstruction traversal, representing an
+ * entry $(i, j)$ in the matrix of a nonterminal symbol $A$.
  */
-static FastBoolMatrix *fast_bool_build(GrB_Matrix mat, GrB_Index n) {
-	FastBoolMatrix *fmat = malloc(sizeof(FastBoolMatrix));
-	if (!fmat) {
-		return NULL;
-	}
-	fmat->n = n;
-	fmat->rows = calloc(n, sizeof(FastBoolRow));
-	if (!fmat->rows && n > 0) {
-		free(fmat);
-		return NULL;
-	}
-
-	GrB_Index nnz = 0;
-	GrB_Matrix_nvals(&nnz, mat);
-	if (nnz == 0) {
-		return fmat;
-	}
-
-	GrB_Index *row_indices = malloc(nnz * sizeof(GrB_Index));
-	GrB_Index *col_indices = malloc(nnz * sizeof(GrB_Index));
-	if (!row_indices || !col_indices) {
-		goto fail;
-	}
-
-	GrB_Matrix_extractTuples_BOOL(row_indices, col_indices, NULL, &nnz, mat);
-
-	for (GrB_Index k = 0; k < nnz; k++) {
-		fmat->rows[row_indices[k]].count++;
-	}
-	for (GrB_Index r = 0; r < n; r++) {
-		if (fmat->rows[r].count > 0) {
-			fmat->rows[r].cols = malloc(fmat->rows[r].count * sizeof(GrB_Index));
-			if (!fmat->rows[r].cols) {
-				goto fail;
-			}
-			fmat->rows[r].count = 0;
-		}
-	}
-	for (GrB_Index k = 0; k < nnz; k++) {
-		GrB_Index r = row_indices[k];
-		fmat->rows[r].cols[fmat->rows[r].count++] = col_indices[k];
-	}
-	free(row_indices);
-	free(col_indices);
-	return fmat;
-
-fail:
-	free(row_indices);
-	free(col_indices);
-	fast_bool_free(fmat);
-	return NULL;
-}
-
-/**
- * @brief Checks if edge (i, j) exists in a `FastBoolMatrix`.
- *
- * @param[in] fmat Input boolean lookup matrix.
- * @param[in] i    Row index.
- * @param[in] j    Column index.
- *
- * @return `true` if edge exists, `false` otherwise.
- */
-static bool fast_bool_has(const FastBoolMatrix *fmat, GrB_Index i, GrB_Index j) {
-	if (!fmat || i >= fmat->n) {
-		return false;
-	}
-	const FastBoolRow *row = &fmat->rows[i];
-	uint32_t count = row->count;
-	if (count == 0) {
-		return false;
-	}
-	for (uint32_t k = 0; k < count; k++) {
-		if (row->cols[k] == j) {
-			return true;
-		}
-	}
-	return false;
-}
-
 typedef struct {
-	GrB_Index row_idx;
-	GrB_Index col_idx;
-	int32_t nonterm;
+	GrB_Index row_idx;	// Source vertex index (row i)
+	GrB_Index col_idx;	// Target vertex index (column j)
+	int32_t nonterm;	// Nonterminal symbol ID
+	GrB_Index elem_idx; // Linear index of the element in CSR arrays
 } StackElem;
 
+/**
+ * @brief Dynamic stack container for explicit DFS path extraction.
+ */
 typedef struct {
-	StackElem *elems;
-	int64_t top;
-	int64_t capacity;
+	StackElem *elems; // Pointer to heap-allocated elements buffer
+	int64_t top;	  // Current top index (number of pushed elements)
+	int64_t cap;	  // Allocated buffer capacity
 } Stack;
 
-static Stack stack_new(void) {
-	return (Stack){.elems = NULL, .top = 0, .capacity = 0};
-}
+static Stack stack_new(void) { return (Stack){.elems = NULL, .top = 0, .cap = 0}; }
 
 static void stack_free(Stack *s) { free(s->elems); }
 
-static bool stack_push(Stack *s, GrB_Index i, GrB_Index j, int32_t A) {
-	if (s->top == s->capacity) {
-		int64_t new_cap = s->capacity == 0 ? 64 : s->capacity * 2;
+static bool stack_push(Stack *s, GrB_Index row_idx, GrB_Index col_idx,
+					   int32_t nonterm, GrB_Index idx) {
+	if (s->top == s->cap) {
+		int64_t new_cap = s->cap == 0 ? 64 : s->cap * 2;
 		StackElem *tmp = realloc(s->elems, (size_t)new_cap * sizeof(StackElem));
 		if (!tmp) {
 			return false;
 		}
 		s->elems = tmp;
-		s->capacity = new_cap;
+		s->cap = new_cap;
 	}
-	s->elems[s->top++] = (StackElem){i, j, A};
+	s->elems[s->top++] = (StackElem){row_idx, col_idx, nonterm, idx};
 	return true;
 }
 
@@ -408,13 +181,20 @@ static StackElem stack_pop(Stack *s) { return s->elems[--s->top]; }
 
 static bool stack_empty(Stack *s) { return s->top == 0; }
 
+/**
+ * @brief Represents a terminal production rule (A -> a).
+ */
 typedef struct {
-	int32_t term; // terminal index (prod_A of the rule)
+	int32_t term; // Target terminal index (prod_A of the rule)
 } TermRule;
 
+/**
+ * @brief Lookup entry containing all terminal production rules for a specific
+ * nonterminal.
+ */
 typedef struct {
-	TermRule *term_rules;
-	int32_t term_count;
+	TermRule *term_rules; // Array of terminal production rules
+	int32_t term_count;	  // Number of terminal rules for this nonterminal
 } NontermRules;
 
 /**
@@ -538,56 +318,30 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 }
 
 /**
- * @brief Lazily retrieves or builds the `FastPathsMatrix` index for `paths[a]`.
+ * @brief Lazily retrieves or opens the zero-copy `PathsView` index for nonterminal
+ * `paths[nonterm_idx]`.
  *
- * @param[out]    out_fmat   Pointer to receive the target `FastPathsMatrix`.
- * @param[in,out] fast_paths Array of cached `FastPathsMatrix` structures.
- * @param[in]     paths      Array of raw path matrices.
- * @param[in]     a          Nonterminal symbol index.
- * @param[in]     n          Matrix dimension.
+ * @param[out] out_view    Output pointer to the opened `PathsView`.
+ * @param[in]  fast_paths  Array of views per nonterminal symbol.
+ * @param[in]  paths       Array of original GraphBLAS nonterminal matrices.
+ * @param[in]  nonterm_idx Index of the nonterminal symbol.
+ * @param[in]  n           Total number of vertices in the graph.
  *
- * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` on allocation failure.
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
-static inline GrB_Info get_fast_paths(FastPathsMatrix **out_fmat,
-									  FastPathsMatrix **fast_paths,
-									  GrB_Matrix *paths, int32_t a, GrB_Index n) {
-	if (fast_paths[a] == NULL) {
-		fast_paths[a] = fast_paths_build(paths[a], n);
-		if (!fast_paths[a]) {
-			*out_fmat = NULL;
-			return GrB_OUT_OF_MEMORY;
+static inline GrB_Info get_or_open_paths_view(PathsView **out_fview,
+											  PathsView *fast_paths,
+											  GrB_Matrix *paths, int32_t nonterm_idx,
+											  GrB_Index n) {
+	if (fast_paths[nonterm_idx].Ap == NULL) {
+		GrB_Info info =
+			paths_view_open(&fast_paths[nonterm_idx], paths[nonterm_idx], n);
+		if (info != GrB_SUCCESS) {
+			*out_fview = NULL;
+			return info;
 		}
 	}
-	*out_fmat = fast_paths[a];
-	return GrB_SUCCESS;
-}
-
-/**
- * @brief Lazily retrieves or builds the `FastBoolMatrix` index for terminal
- * adjacency.
- *
- * @param[out]    out_fadj       Pointer to receive the target `FastBoolMatrix`.
- * @param[in,out] fast_adj       Array of cached `FastBoolMatrix` structures.
- * @param[in]     adj_matrices   Array of terminal adjacency matrices.
- * @param[in]     nonterms_count Number of nonterminal symbols.
- * @param[in]     term_idx       Terminal symbol index.
- * @param[in]     n              Matrix dimension.
- *
- * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` on allocation failure.
- */
-static inline GrB_Info get_fast_adj(FastBoolMatrix **out_fadj,
-									FastBoolMatrix **fast_adj,
-									GrB_Matrix *adj_matrices, int32_t nonterms_count,
-									int32_t term_idx, GrB_Index n) {
-	if (fast_adj[term_idx] == NULL) {
-		fast_adj[term_idx] =
-			fast_bool_build(adj_matrices[nonterms_count + term_idx], n);
-		if (!fast_adj[term_idx]) {
-			*out_fadj = NULL;
-			return GrB_OUT_OF_MEMORY;
-		}
-	}
-	*out_fadj = fast_adj[term_idx];
+	*out_fview = &fast_paths[nonterm_idx];
 	return GrB_SUCCESS;
 }
 
@@ -602,6 +356,146 @@ static inline int32_t mid_entry_rest_id(const MidEntry *e, uint32_t k) {
 	return e->rest.inline_ids[k];
 }
 
+/**
+ * @brief Attempts to push a path derivation step $(i, j)$ for nonterminal $A$ onto
+ * the DFS stack.
+ *
+ * Performs element presence lookup in the corresponding `PathsView` and checks if
+ * the entry was already visited using the bitset.
+ *
+ * @param[in,out] st         Pointer to the active stack.
+ * @param[in,out] fast_paths Array of cached `PathsView` objects.
+ * @param[in]     paths      Array of raw GraphBLAS matrices.
+ * @param[in]     row_idx    Source vertex index (row i).
+ * @param[in]     col_idx    Target vertex index (column j).
+ * @param[in]     nonterm    Nonterminal symbol ID.
+ * @param[in]     n          Total number of vertices in the graph.
+ *
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
+ */
+static GrB_Info push_unvisited_path_step(Stack *st, PathsView *fast_paths,
+										 GrB_Matrix *paths, GrB_Index row_idx,
+										 GrB_Index col_idx, int32_t nonterm,
+										 GrB_Index n) {
+	GrB_Info info = GrB_SUCCESS;
+	PathsView *v = NULL;
+
+	GRB_TRY(get_or_open_paths_view(&v, fast_paths, paths, nonterm, n));
+
+	GrB_Index idx;
+	if (!paths_view_find_elem(v, row_idx, col_idx, &idx)) {
+		return GrB_SUCCESS;
+	}
+	if (test_and_set(v->visited, idx)) {
+		return GrB_SUCCESS;
+	}
+
+	if (!stack_push(st, row_idx, col_idx, nonterm, idx)) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
+
+	return GrB_SUCCESS;
+
+cleanup:
+	return info;
+}
+
+/**
+ * @brief Bundles runtime context and resources required for edge extraction.
+ *
+ * Passed across helper routines to minimize parameter passing during DFS stack
+ * draining.
+ */
+typedef struct {
+	Stack *stack;		   // Active DFS stack
+	PathsView *fast_paths; // Array of CSR views per nonterminal symbol
+	GrB_Matrix *paths;	   // Raw GraphBLAS matrices for nonterminals
+	GrB_Matrix *out;	   // Output GraphBLAS matrices for extracted terminal edges
+	GrB_Matrix *adj_matrices; // Input graph adjacency matrices for terminals
+	const BinaryRuleInfo
+		*rule_table; // Lookup table for binary grammar rules (A -> B C)
+	const NontermRules *grammar_idx;	// Index of terminal grammar rules (A -> a)
+	const int32_t *grammar_to_straight; // Interleaved to linear index mapping table
+										// for terminals
+	MRGrammar_t grammar;				// Context-free grammar definition
+	GrB_Index n;						// Number of vertices in the graph
+} ExtractionContext;
+
+/**
+ * @brief Drains current stack completely in DFS order to reconstruct derivation
+ * trees.
+ *
+ * Recursively pops derivation elements, splits binary rules $A \to B C$, and records
+ * terminal edges into output matrices when terminal derivations $A \to a$ are
+ * reached.
+ *
+ * @param[in,out] ctx Pointer to the active extraction context.
+ *
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
+ */
+static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
+	GrB_Info info = GrB_SUCCESS;
+
+	while (!stack_empty(ctx->stack)) {
+		StackElem cur = stack_pop(ctx->stack);
+		GrB_Index i = cur.row_idx;
+		GrB_Index j = cur.col_idx;
+		int32_t A = cur.nonterm;
+		GrB_Index elem_idx = cur.elem_idx;
+
+		PathsView *cur_view = &ctx->fast_paths[A];
+		AllPathsElem elem = cur_view->iso ? cur_view->Ax[0] : cur_view->Ax[elem_idx];
+
+		const NontermRules *rules = &ctx->grammar_idx[A];
+
+		// Iterate over intermediate vertices
+		for (GrB_Index ki = 0; ki < elem.n; ki++) {
+			MidEntry entry =
+				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
+			GrB_Index mid = entry.mid;
+
+			if (mid == GrB_INDEX_MAX) {
+				// Terminal edge: A -> term
+				for (int32_t ri = 0; ri < rules->term_count; ri++) {
+					int32_t term = rules->term_rules[ri].term;
+					int32_t term_idx = term - (int32_t)ctx->grammar.nonterms_count;
+
+					bool has_edge = false;
+					GrB_Info err = GrB_Matrix_extractElement_BOOL(
+						&has_edge,
+						ctx->adj_matrices[ctx->grammar.nonterms_count + term_idx], i,
+						j);
+					if (err == GrB_SUCCESS && has_edge) {
+						int32_t straight_idx = ctx->grammar_to_straight[term_idx];
+						GRB_TRY(GrB_Matrix_setElement_BOOL(ctx->out[straight_idx],
+														   true, i, j));
+					}
+				}
+				continue;
+			}
+
+			// Binary split: A -> B C via mid
+			uint32_t rule_count = entry.rule_count;
+
+			for (uint32_t part = 0; part < rule_count; part++) {
+				int32_t rid = (part == 0) ? entry.rule_id0
+										  : mid_entry_rest_id(&entry, part - 1);
+				BinaryRuleInfo ri = ctx->rule_table[rid];
+
+				GRB_TRY(push_unvisited_path_step(ctx->stack, ctx->fast_paths,
+												 ctx->paths, i, mid, ri.B, ctx->n));
+				GRB_TRY(push_unvisited_path_step(ctx->stack, ctx->fast_paths,
+												 ctx->paths, mid, j, ri.C, ctx->n));
+			}
+		}
+	}
+	return GrB_SUCCESS;
+
+cleanup:
+	return info;
+}
+
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 									const BinaryRuleInfo *rule_table,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
@@ -612,20 +506,25 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 
 	NontermRules *grammar_idx = NULL;
 	Stack stack = stack_new();
-	GrB_Index *rows = NULL;
-	GrB_Index *cols = NULL;
 	int32_t *grammar_to_straight = NULL;
-	FastPathsMatrix **fast_paths = NULL;
-	FastBoolMatrix **fast_adj = NULL;
+	PathsView *fast_paths = NULL;
 
-	// Initialize out (result matrices)
+	// Pre-initialize out pointers to NULL for safe cleanup
+	for (int64_t t = 0; t < grammar.terms_count; t++) {
+		out[t] = NULL;
+	}
+
+	// Initialize out & force materialize adj_matrices
 	for (int64_t t = 0; t < grammar.terms_count; t++) {
 		GRB_TRY(GrB_Matrix_new(&out[t], GrB_BOOL, n, n));
+		GRB_TRY(GrB_Matrix_wait(adj_matrices[grammar.nonterms_count + t],
+								GrB_MATERIALIZE));
 	}
 
 	grammar_to_straight = malloc((size_t)grammar.terms_count * sizeof(int32_t));
 	if (!grammar_to_straight) {
-		return GrB_OUT_OF_MEMORY;
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
 	}
 
 	switch (config->kind) {
@@ -663,146 +562,70 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		goto cleanup;
 	}
 
-	// Stack initialization
-	if (target_path != NULL) {
-		// On-demand analysis
-
-		if (!stack_push(&stack, target_path->src, target_path->tgt, NT_START)) {
-			info = GrB_OUT_OF_MEMORY;
-			goto cleanup;
-		}
-	} else {
-		// Default: all pairs from paths[NT_START]
-
-		GrB_Index nnz = 0;
-		GrB_Matrix_nvals(&nnz, paths[NT_START]);
-		if (nnz == 0) {
-			goto cleanup;
-		}
-
-		rows = malloc(nnz * sizeof(GrB_Index));
-		cols = malloc(nnz * sizeof(GrB_Index));
-		if (!rows || !cols) {
-			info = GrB_OUT_OF_MEMORY;
-			goto cleanup;
-		}
-
-		GRB_TRY(GrB_Matrix_extractTuples(rows, cols, NULL, &nnz, paths[NT_START]));
-
-		for (GrB_Index k = 0; k < nnz; k++) {
-			if (rows[k] != cols[k]) {
-				if (!stack_push(&stack, rows[k], cols[k], NT_START)) {
-					info = GrB_OUT_OF_MEMORY;
-					goto cleanup;
-				}
-			}
-		}
-
-		free((void *)rows);
-		free((void *)cols);
-		rows = NULL;
-		cols = NULL;
-	}
-
-	fast_paths = (FastPathsMatrix **)calloc(grammar.nonterms_count,
-											sizeof(FastPathsMatrix *));
-	fast_adj =
-		(FastPathsMatrix **)calloc(grammar.terms_count, sizeof(FastBoolMatrix *));
-	if (!fast_paths || !fast_adj) {
+	fast_paths = calloc((size_t)grammar.nonterms_count, sizeof(PathsView));
+	if (!fast_paths) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
 	}
 
-	// Main DFS loop
-	while (!stack_empty(&stack)) {
-		StackElem cur = stack_pop(&stack);
-		GrB_Index i = cur.row_idx;
-		GrB_Index j = cur.col_idx;
-		int32_t A = cur.nonterm;
+	ExtractionContext ctx = {.stack = &stack,
+							 .fast_paths = fast_paths,
+							 .paths = paths,
+							 .out = out,
+							 .adj_matrices = adj_matrices,
+							 .rule_table = rule_table,
+							 .grammar_idx = grammar_idx,
+							 .grammar_to_straight = grammar_to_straight,
+							 .grammar = grammar,
+							 .n = n};
 
-		FastPathsMatrix *cur_paths = NULL;
-		GRB_TRY(get_fast_paths(&cur_paths, fast_paths, paths, A, n));
+	// Stack initialization & execution
+	if (target_path != NULL) {
+		// On-demand analysis
+		GRB_TRY(push_unvisited_path_step(&stack, fast_paths, paths, target_path->src,
+										 target_path->tgt, NT_START, n));
+		GRB_TRY(drain_extraction_stack(&ctx));
+	} else {
+		// Default: all pairs from paths[NT_START]
+		PathsView *start_view = NULL;
+		GRB_TRY(get_or_open_paths_view(&start_view, fast_paths, paths, NT_START, n));
 
-		GrB_Index elem_idx;
-		AllPathsElem elem;
-		if (!fast_paths_get_with_index(cur_paths, i, j, &elem_idx, &elem)) {
-			continue;
-		}
+		for (GrB_Index r = 0; r < n; r++) {
+			GrB_Index start = start_view->Ap[r];
+			GrB_Index end = start_view->Ap[r + 1];
 
-		// Check and set the 'visited' bit
-		if (test_and_set(cur_paths->visited, elem_idx)) {
-			continue;
-		}
-
-		const NontermRules *rules = &grammar_idx[A];
-
-		// Iterate over intermediate vertices
-		for (GrB_Index ki = 0; ki < elem.n; ki++) {
-			MidEntry entry =
-				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
-			GrB_Index mid = entry.mid;
-
-			if (mid == GrB_INDEX_MAX) {
-				// Terminal edge: A -> term
-				for (int32_t ri = 0; ri < rules->term_count; ri++) {
-					int32_t term = rules->term_rules[ri].term;
-					int32_t term_idx = term - (int32_t)grammar.nonterms_count;
-
-					FastBoolMatrix *adj = NULL;
-					GRB_TRY(get_fast_adj(&adj, fast_adj, adj_matrices,
-										 grammar.nonterms_count, term_idx, n));
-					if (fast_bool_has(adj, i, j)) {
-						int32_t straight_idx = grammar_to_straight[term_idx];
-						GRB_TRY(GrB_Matrix_setElement_BOOL(out[straight_idx], true,
-														   i, j));
-					}
-				}
-				continue;
-			}
-
-			// Binary split: A -> B C via mid
-
-			uint32_t rule_count = entry.rule_count;
-
-			for (uint32_t part = 0; part < rule_count; part++) {
-				int32_t rid = (part == 0) ? entry.rule_id0
-										  : mid_entry_rest_id(&entry, part - 1);
-				BinaryRuleInfo ri = rule_table[rid];
-
-				// Only push if not already visited - avoids stacking the
-				// same pair multiple times
-				if (!is_visited(fast_paths[ri.B], i, mid)) {
-					if (!stack_push(&stack, i, mid, ri.B)) {
-						info = GrB_OUT_OF_MEMORY;
-						goto cleanup;
-					}
-				}
-				if (!is_visited(fast_paths[ri.C], mid, j)) {
-					if (!stack_push(&stack, mid, j, ri.C)) {
-						info = GrB_OUT_OF_MEMORY;
-						goto cleanup;
-					}
+			for (GrB_Index e = start; e < end; e++) {
+				GrB_Index c = start_view->Aj[e];
+				if (r != c) {
+					GRB_TRY(push_unvisited_path_step(&stack, fast_paths, paths, r, c,
+													 NT_START, n));
+					GRB_TRY(drain_extraction_stack(&ctx));
 				}
 			}
+		}
+	}
+
+	for (int64_t t = 0; t < grammar.terms_count; t++) {
+		if (out[t]) {
+			GrB_Matrix_wait(out[t], GrB_MATERIALIZE);
 		}
 	}
 
 cleanup:
+	if (info != GrB_SUCCESS) {
+		for (int64_t t = 0; t < grammar.terms_count; t++) {
+			if (out[t]) {
+				GrB_Matrix_free(&out[t]);
+			}
+		}
+	}
 	if (fast_paths) {
 		for (int32_t a = 0; a < grammar.nonterms_count; a++) {
-			fast_paths_free(fast_paths[a]);
+			paths_view_close(&fast_paths[a]);
 		}
-		free((void *)fast_paths);
-	}
-	if (fast_adj) {
-		for (int64_t t = 0; t < grammar.terms_count; t++) {
-			fast_bool_free(fast_adj[t]);
-		}
-		free((void *)fast_adj);
+		free(fast_paths);
 	}
 	free(grammar_to_straight);
-	free(rows);
-	free(cols);
 	free_grammar_index(grammar_idx, grammar.nonterms_count);
 	stack_free(&stack);
 	return info;
