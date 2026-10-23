@@ -1,30 +1,54 @@
 #include "extract_edges.h"
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "internal/grb_utils.h"
 
 /**
- * @brief Lightweight zero-copy CSR view of a nonterminal path matrix.
+ * @brief Memory budget divisor for bucket index allocation.
  *
- * Wraps unpacked GraphBLAS CSR array pointers for direct element lookup and tracks
- * visited matrix entries using a bitset to prevent redundant traversals during DFS.
+ * Caps bucket index memory footprint to 1 / BUCKET_MEM_BUDGET_DIVISOR (25%)
+ * of the underlying HyperCSR matrix structure size.
+ */
+#define BUCKET_MEM_BUDGET_DIVISOR 4
+
+/**
+ * @brief Maximum range size threshold for switching from binary search to linear
+ * scan.
+ *
+ * Ranges with a length less than or equal to BINARY_SEARCH_THRESHOLD are scanned
+ * linearly to minimize branch mispredictions and binary search overheads.
+ */
+#define BINARY_SEARCH_THRESHOLD 8
+
+/**
+ * @brief Lightweight zero-copy HyperCSR view of a nonterminal path matrix.
+ *
+ * Wraps unpacked GraphBLAS HyperCSR array pointers for hyper-sparse element lookup
+ * with optional bucket indexing, and tracks visited matrix entries using a bitset to
+ * prevent redundant traversals during DFS.
  */
 typedef struct {
 	GrB_Matrix mat;	   // Handle to the underlying GraphBLAS matrix
-	GrB_Index *Ap;	   // CSR row pointers array
-	GrB_Index *Aj;	   // CSR column indices array
+	GrB_Index *Ap;	   // HyperCSR column start pointers array
+	GrB_Index *Ah;	   // HyperCSR active row indices array
+	GrB_Index *Aj;	   // HyperCSR column indices array
 	AllPathsElem *Ax;  // Array of path reconstruction elements
-	GrB_Index Ap_size; // Allocated size of row pointers array
+	GrB_Index Ap_size; // Allocated size of column pointers array
+	GrB_Index Ah_size; // Allocated size of active row indices array
 	GrB_Index Aj_size; // Allocated size of column indices array
 	GrB_Index Ax_size; // Allocated size of element values array
-	bool iso;		   // True if all non-zero entries share a single iso-value
-	uint64_t *visited; // Bitset tracking visited non-zero entries (1 bit per entry)
-	GrB_Index n;	   // Number of vertices in the graph
+	GrB_Index nvec;	   // Number of non-empty rows in the hyper-sparse matrix
 	GrB_Index nnz;	   // Total number of non-zero entries in the matrix
+	bool iso;		   // True if all non-zero entries share a single iso-value
+	bool open;		   // True if the view currently holds unpacked pointers
+	uint64_t *visited; // Bitset tracking visited non-zero entries (1 bit per entry)
+	uint32_t
+		*bstart;	// Array of bucket start indices in Ah for accelerated row lookup
+	uint32_t shift; // Bitwise shift amount for bucket index calculation
+	GrB_Index nbuckets; // Total number of allocated lookup buckets
 } PathsView;
 
 /**
@@ -44,29 +68,79 @@ static inline bool test_and_set(uint64_t *b, GrB_Index p) {
 }
 
 /**
- * @brief Packs the matrix back to GraphBLAS ownership and frees internal view
- * resources.
+ * @brief Packs the HyperCSR matrix back to GraphBLAS ownership and frees internal
+ * view resources.
  *
  * @param[in,out] v Pointer to the `PathsView` to close.
+ *
+ * @return `GrB_SUCCESS` on success, or GraphBLAS error code on packing failure.
  */
-static void paths_view_close(PathsView *v) {
-	if (v && v->Ap) {
-		GxB_Matrix_pack_CSR(v->mat, &v->Ap, &v->Aj, (void **)&v->Ax, v->Ap_size,
-							v->Aj_size, v->Ax_size, v->iso, false, NULL);
-		free(v->visited);
-		v->visited = NULL;
-		v->Ap = NULL;
-		v->Aj = NULL;
-		v->Ax = NULL;
+static GrB_Info paths_view_close(PathsView *v) {
+	if (!v || !v->open) {
+		return GrB_SUCCESS;
 	}
+	GrB_Info info = GxB_Matrix_pack_HyperCSR(
+		v->mat, &v->Ap, &v->Ah, &v->Aj, (void **)&v->Ax, v->Ap_size, v->Ah_size,
+		v->Aj_size, v->Ax_size, v->iso, v->nvec, false, NULL);
+	free(v->visited);
+	free(v->bstart);
+	memset(v, 0, sizeof(*v));
+	return info;
 }
 
 /**
- * @brief Unpacks a GraphBLAS CSR structure into a lightweight zero-copy view.
+ * @brief Builds a bucket index for fast estimation of row boundaries in the HyperCSR
  *
- * @param[out] v         Pointer to the target `PathsView` structure.
- * @param[in]  mat       GraphBLAS matrix to unpack.
- * @param[in]  num_nodes Total number of vertices in the graph.
+ * @param[in,out] v Pointer to the open `PathsView`.
+ * @param[in]     n Total number of vertices in the graph.
+ *
+ * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` on allocation failure.
+ */
+static GrB_Info paths_view_build_buckets(PathsView *v, GrB_Index n) {
+	if (v->nvec < 32 || v->nvec > UINT32_MAX) {
+		return GrB_SUCCESS;
+	}
+
+	// Memory budget: limit size relative to HyperCSR base structure (Ap + Ah + Aj)
+	size_t base = ((size_t)v->nvec * 2 + v->nnz) * sizeof(GrB_Index);
+	GrB_Index max_nb =
+		(GrB_Index)(base / BUCKET_MEM_BUDGET_DIVISOR / sizeof(uint32_t));
+	if (max_nb < v->nvec) {
+		max_nb = v->nvec; // Fallback to baseline nvec density
+	}
+
+	uint32_t shift = 0;
+	while (((n >> shift) + 1) > max_nb) {
+		shift++;
+	}
+
+	GrB_Index nb = (n >> shift) + 1;
+	v->bstart = malloc((nb + 1) * sizeof(uint32_t));
+	if (!v->bstart) {
+		return GrB_OUT_OF_MEMORY;
+	}
+
+	v->shift = shift;
+	v->nbuckets = nb;
+
+	GrB_Index m = 0;
+	for (GrB_Index b = 0; b <= nb; b++) {
+		while (m < v->nvec && (v->Ah[m] >> shift) < b) {
+			m++;
+		}
+		v->bstart[b] = (uint32_t)m;
+	}
+
+	return GrB_SUCCESS;
+}
+
+/**
+ * @brief Unpacks a GraphBLAS HyperCSR structure into a zero-copy view without
+ * converting to standard CSR.
+ *
+ * @param[out] v   Pointer to the target `PathsView` structure.
+ * @param[in]  mat GraphBLAS matrix to unpack.
+ * @param[in]  n   Total number of vertices in the graph.
  *
  * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
@@ -74,15 +148,16 @@ static GrB_Info paths_view_open(PathsView *v, GrB_Matrix mat, GrB_Index n) {
 	GrB_Info info = GrB_SUCCESS;
 	memset(v, 0, sizeof(*v));
 	v->mat = mat;
-	v->n = n;
+
 	GRB_TRY(GrB_Matrix_wait(mat, GrB_MATERIALIZE));
 
-	bool jumbled = false;
-	GRB_TRY(GxB_Matrix_unpack_CSR(mat, &v->Ap, &v->Aj, (void **)&v->Ax, &v->Ap_size,
-								  &v->Aj_size, &v->Ax_size, &v->iso, &jumbled,
-								  NULL));
+	GRB_TRY(GxB_Matrix_unpack_HyperCSR(mat, &v->Ap, &v->Ah, &v->Aj, (void **)&v->Ax,
+									   &v->Ap_size, &v->Ah_size, &v->Aj_size,
+									   &v->Ax_size, &v->iso, &v->nvec, NULL, NULL));
 
-	v->nnz = v->Ap[n];
+	v->open = true;
+	v->nnz = (v->Ap && v->nvec) ? v->Ap[v->nvec] : 0;
+
 	if (v->nnz > 0) {
 		v->visited = calloc((size_t)((v->nnz + 63) / 64), sizeof(uint64_t));
 		if (!v->visited) {
@@ -90,6 +165,9 @@ static GrB_Info paths_view_open(PathsView *v, GrB_Matrix mat, GrB_Index n) {
 			goto cleanup;
 		}
 	}
+
+	GRB_TRY(paths_view_build_buckets(v, n));
+
 	return GrB_SUCCESS;
 
 cleanup:
@@ -98,8 +176,11 @@ cleanup:
 }
 
 /**
- * @brief Looks up a column index `col_idx` in row `row_idx` via binary search on CSR
- * `Aj` array.
+ * @brief Looks up a column index `col_idx` in row `row_idx` using bucket indexing,
+ * direct row resolution when shift==0, combined binary search, and linear scan.
+ *
+ * Performs bucket-assisted search on `Ah` to locate the active row, followed by a
+ * search on `Aj` to locate the column.
  *
  * @param[in]  v       Pointer to the open `PathsView`.
  * @param[in]  row_idx Index of the row (source vertex).
@@ -110,26 +191,68 @@ cleanup:
  */
 static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
 										GrB_Index col_idx, GrB_Index *out_idx) {
-	if (!v || !v->Ap || row_idx >= v->n) {
+	if (!v->open || v->nvec == 0) {
 		return false;
 	}
 
-	GrB_Index lo = v->Ap[row_idx];
-	GrB_Index hi = v->Ap[row_idx + 1];
-	GrB_Index end = hi;
+	// Step 1: Bucket-assisted search for row_idx in Ah array
+	GrB_Index lo, hi;
+	if (v->bstart) {
+		GrB_Index b = row_idx >> v->shift;
+		if (b >= v->nbuckets) {
+			return false;
+		}
+		lo = v->bstart[b];
+		hi = v->bstart[b + 1];
+		if (v->shift == 0) {
+			if (lo == hi) {
+				return false; // Row row_idx is not present
+			}
+			goto have_row; // Ah[lo] == row_idx guaranteed; skip Ah lookup
+		}
+	} else {
+		lo = 0;
+		hi = v->nvec;
+	}
 
-	while (lo < hi) {
+	// Binary search while range > BINARY_SEARCH_THRESHOLD
+	while (hi - lo > BINARY_SEARCH_THRESHOLD) {
 		GrB_Index m = lo + (hi - lo) / 2;
-		if (v->Aj[m] < col_idx) {
+		if (v->Ah[m] < row_idx) {
 			lo = m + 1;
 		} else {
 			hi = m;
 		}
 	}
+	// Linear scan for remaining range <= BINARY_SEARCH_THRESHOLD
+	while (lo < hi && v->Ah[lo] < row_idx) {
+		lo++;
+	}
 
-	if (lo < end && v->Aj[lo] == col_idx) {
+	if (lo >= v->nvec || v->Ah[lo] != row_idx) {
+		return false;
+	}
+
+have_row:
+	// Step 2: Search for col_idx in Aj array
+	GrB_Index l = v->Ap[lo], h = v->Ap[lo + 1], e = h;
+	// Binary search while range > BINARY_SEARCH_THRESHOLD
+	while (h - l > 8) {
+		GrB_Index m = l + (h - l) / 2;
+		if (v->Aj[m] < col_idx) {
+			l = m + 1;
+		} else {
+			h = m;
+		}
+	}
+	// Linear scan for remaining range <= BINARY_SEARCH_THRESHOLD
+	while (l < h && v->Aj[l] < col_idx) {
+		l++;
+	}
+
+	if (l < e && v->Aj[l] == col_idx) {
 		if (out_idx) {
-			*out_idx = lo;
+			*out_idx = l;
 		}
 		return true;
 	}
@@ -146,7 +269,7 @@ typedef struct {
 	GrB_Index row_idx;	// Source vertex index (row i)
 	GrB_Index col_idx;	// Target vertex index (column j)
 	int32_t nonterm;	// Nonterminal symbol ID
-	GrB_Index elem_idx; // Linear index of the element in CSR arrays
+	GrB_Index elem_idx; // Linear index of the element in CSR/HyperCSR arrays
 } StackElem;
 
 /**
@@ -318,8 +441,8 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 }
 
 /**
- * @brief Lazily retrieves or opens the zero-copy `PathsView` index for nonterminal
- * `paths[nonterm_idx]`.
+ * @brief Lazily retrieves or opens the zero-copy HyperCSR `PathsView` for
+ * nonterminal `paths[nonterm_idx]`.
  *
  * @param[out] out_view    Output pointer to the opened `PathsView`.
  * @param[in]  fast_paths  Array of views per nonterminal symbol.
@@ -333,7 +456,7 @@ static inline GrB_Info get_or_open_paths_view(PathsView **out_fview,
 											  PathsView *fast_paths,
 											  GrB_Matrix *paths, int32_t nonterm_idx,
 											  GrB_Index n) {
-	if (fast_paths[nonterm_idx].Ap == NULL) {
+	if (!fast_paths[nonterm_idx].open) {
 		GrB_Info info =
 			paths_view_open(&fast_paths[nonterm_idx], paths[nonterm_idx], n);
 		if (info != GrB_SUCCESS) {
@@ -409,7 +532,7 @@ cleanup:
  */
 typedef struct {
 	Stack *stack;		   // Active DFS stack
-	PathsView *fast_paths; // Array of CSR views per nonterminal symbol
+	PathsView *fast_paths; // Array of HyperCSR views per nonterminal symbol
 	GrB_Matrix *paths;	   // Raw GraphBLAS matrices for nonterminals
 	GrB_Matrix *out;	   // Output GraphBLAS matrices for extracted terminal edges
 	GrB_Matrix *adj_matrices; // Input graph adjacency matrices for terminals
@@ -590,11 +713,9 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		PathsView *start_view = NULL;
 		GRB_TRY(get_or_open_paths_view(&start_view, fast_paths, paths, NT_START, n));
 
-		for (GrB_Index r = 0; r < n; r++) {
-			GrB_Index start = start_view->Ap[r];
-			GrB_Index end = start_view->Ap[r + 1];
-
-			for (GrB_Index e = start; e < end; e++) {
+		for (GrB_Index rr = 0; rr < start_view->nvec; rr++) {
+			GrB_Index r = start_view->Ah[rr];
+			for (GrB_Index e = start_view->Ap[rr]; e < start_view->Ap[rr + 1]; e++) {
 				GrB_Index c = start_view->Aj[e];
 				if (r != c) {
 					GRB_TRY(push_unvisited_path_step(&stack, fast_paths, paths, r, c,
@@ -621,7 +742,10 @@ cleanup:
 	}
 	if (fast_paths) {
 		for (int32_t a = 0; a < grammar.nonterms_count; a++) {
-			paths_view_close(&fast_paths[a]);
+			GrB_Info close_info = paths_view_close(&fast_paths[a]);
+			if (info == GrB_SUCCESS && close_info != GrB_SUCCESS) {
+				info = close_info;
+			}
 		}
 		free(fast_paths);
 	}
