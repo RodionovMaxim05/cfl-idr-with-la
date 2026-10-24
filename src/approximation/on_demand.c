@@ -184,7 +184,12 @@ static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph
 				&mr_result, components, vertex_maps, comp_count, n_scc, grammar_type,
 				valueflow, filter_empty, &target_path, &cache);
 
-			if (info == GrB_SUCCESS && mr_result != NULL) {
+			if (info != GrB_SUCCESS) {
+				GrB_Matrix_free(&mr_result);
+				goto cleanup;
+			}
+
+			if (mr_result != NULL) {
 				bool confirmed = false;
 				GrB_Matrix_extractElement_BOOL(&confirmed, mr_result, src, tgt);
 				if (confirmed) {

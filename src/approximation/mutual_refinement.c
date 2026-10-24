@@ -47,7 +47,7 @@ static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B
 
 #define RETURN_EMPTY                                                                \
 	do {                                                                            \
-		GRB_TRY(GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n));              \
+		GRB_TRY(GrB_Matrix_new(result, GrB_BOOL, n, n));                            \
 		goto cleanup;                                                               \
 	} while (0)
 
@@ -66,6 +66,7 @@ static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B
  *
  * @param[out] result        Output reachability matrix (n × n, `GrB_BOOL`).
  * @param[in]  graph         Input graph to analyze.
+ * @param[in]  consume       If `true`, frees input `graph` memory after processing.
  * @param[in]  grammar_type  Grammar variant controlling refinement behavior.
  * @param[in]  valueflow     If `true`, apply value-flow post-processing.
  * @param[in]  filter_empty  If `true`, filter empty parenthesis/bracket pairs.
@@ -75,8 +76,8 @@ static GrB_Info matrix_intersect3(GrB_Matrix *result, GrB_Matrix A, GrB_Matrix B
  * @return `GrB_SUCCESS` on success, or a GraphBLAS/LAGraph error code on failure.
  */
 static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *graph,
-										 IdrGrammarType grammar_type, bool valueflow,
-										 bool filter_empty,
+										 bool consume, IdrGrammarType grammar_type,
+										 bool valueflow, bool filter_empty,
 										 const TargetPath *target_path,
 										 MRCache *cache) {
 	GrB_Info info = GrB_SUCCESS;
@@ -123,7 +124,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 		goto cleanup;
 	}
 
-	alpha_edges = (GrB_Matrix *)malloc(terms_count * sizeof(GrB_Matrix));
+	alpha_edges = (GrB_Matrix *)calloc(terms_count, sizeof(GrB_Matrix));
 	if (!alpha_edges) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
@@ -132,7 +133,9 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 	GRB_TRY(run_cfl_step(graph, alpha_grammar, GRAMMAR_TAG_ALPHA, target_path, cache,
 						 &alpha_reach, &alpha_edges, &target_found));
 	grammar_free(&alpha_grammar);
-	idr_graph_free(graph);
+	if (consume) {
+		idr_graph_free(graph);
+	}
 
 	if (target_path != NULL && !target_found) {
 		RETURN_EMPTY;
@@ -156,7 +159,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 
 	alpha_terms_count =
 		get_terms_count(alpha_graph.n_par, alpha_graph.n_bra, alpha_graph.normal);
-	beta_edges = (GrB_Matrix *)malloc(alpha_terms_count * sizeof(GrB_Matrix));
+	beta_edges = (GrB_Matrix *)calloc(alpha_terms_count, sizeof(GrB_Matrix));
 	if (!beta_edges) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
@@ -191,7 +194,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 
 		beta_terms_count =
 			get_terms_count(beta_graph.n_par, beta_graph.n_bra, beta_graph.normal);
-		project_edges = (GrB_Matrix *)malloc(beta_terms_count * sizeof(GrB_Matrix));
+		project_edges = (GrB_Matrix *)calloc(beta_terms_count, sizeof(GrB_Matrix));
 		if (!project_edges) {
 			info = GrB_OUT_OF_MEMORY;
 			goto cleanup;
@@ -237,7 +240,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 			cur_terms_count =
 				get_terms_count(cur_n_par, cur_n_bra, cur_graph->normal);
 			exclude_edges =
-				(GrB_Matrix *)malloc(cur_terms_count * sizeof(GrB_Matrix));
+				(GrB_Matrix *)calloc(cur_terms_count, sizeof(GrB_Matrix));
 			if (!exclude_edges) {
 				info = GrB_OUT_OF_MEMORY;
 				goto cleanup;
@@ -379,23 +382,25 @@ GrB_Info mutual_refinement_with_components(GrB_Matrix *result, IdrGraph *compone
 				GrB_Matrix_setElement_BOOL(single_path, true, local_src, local_tgt));
 
 			const IdrGraph *to_process = comp;
+			bool consume = false;
 			if (!is_all_pairs(single_path, comp_n)) {
 				GRB_TRY(remove_not_path(&reduced_comp, comp, single_path));
 				reduced_owned = true;
 				to_process = &reduced_comp;
+				consume = true;
 			}
 			GrB_Matrix_free(&single_path);
 
 			TargetPath local_target = {.src = local_src, .tgt = local_tgt};
-			GRB_TRY(mutual_refinement_single(&comp_result, to_process, grammar_type,
-											 valueflow, filter_empty, &local_target,
-											 cache));
+			GRB_TRY(mutual_refinement_single(&comp_result, to_process, consume,
+											 grammar_type, valueflow, filter_empty,
+											 &local_target, cache));
 			if (reduced_owned) {
 				idr_graph_free(&reduced_comp);
 				reduced_owned = false;
 			}
 		} else {
-			GRB_TRY(mutual_refinement_single(&comp_result, comp, grammar_type,
+			GRB_TRY(mutual_refinement_single(&comp_result, comp, true, grammar_type,
 											 valueflow, filter_empty, NULL, cache));
 			idr_graph_free(comp);
 		}
