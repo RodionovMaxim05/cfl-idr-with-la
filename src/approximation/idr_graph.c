@@ -24,6 +24,7 @@ void idr_graph_free(IdrGraph *g) {
 	free((void *)g->close_par);
 	free((void *)g->open_bra);
 	free((void *)g->close_bra);
+	*g = (IdrGraph){0};
 }
 
 void idr_graph_print(const IdrGraph *g) {

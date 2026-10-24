@@ -137,22 +137,25 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 
 		raw_ready = true;
 		raw_res = paths;
-		rule_table = rule_table;
 	}
-
-	GRB_TRY(extract_edges_from_outputs(*out_edges, raw_res, rule_table, adj, grammar,
-									   graph->n, graph->n_par, graph->n_bra,
-									   &grammar.config, target_path));
-
-	GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 
 	if (target_path) {
 		*target_found = matrix_has_path_udt(raw_res[0], target_path);
 		if (*target_found) {
+			GRB_TRY(extract_edges_from_outputs(
+				*out_edges, raw_res, rule_table, adj, grammar, graph->n,
+				graph->n_par, graph->n_bra, &grammar.config, target_path));
+
+			GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 			GRB_TRY(GrB_Matrix_setElement_BOOL(*out_reachability, true,
 											   target_path->src, target_path->tgt));
 		} else {
-			GrB_Matrix_free(out_reachability);
+			if (out_edges && *out_edges) {
+				for (int64_t t = 0; t < grammar.terms_count; t++) {
+					(*out_edges)[t] = NULL;
+				}
+			}
+			*out_reachability = NULL;
 		}
 
 		if (!raw_hit && cache) {
@@ -162,7 +165,20 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 			raw_cached = (ins == GrB_SUCCESS);
 		}
 	} else {
+		GRB_TRY(extract_edges_from_outputs(
+			*out_edges, raw_res, rule_table, adj, grammar, graph->n, graph->n_par,
+			graph->n_bra, &grammar.config, target_path));
+
+		GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 		GRB_TRY(extract_non_trivial_paths(out_reachability, raw_res[0]));
+
+		if (raw_ready) {
+			free_raw(paths, grammar.nonterms_count + grammar.terms_count, rule_table,
+					 &all_paths_t);
+			paths = NULL;
+			rule_table = NULL;
+			raw_ready = false;
+		}
 
 		if (cache) {
 			cached_edges =

@@ -39,22 +39,20 @@ static uint64_t fnv1a_feed_matrix(uint64_t hash, GrB_Matrix m, const char *tag,
 
 	GrB_Index *rows = malloc(nvals * sizeof(GrB_Index));
 	GrB_Index *cols = malloc(nvals * sizeof(GrB_Index));
-	uint64_t *pairs = malloc(nvals * sizeof(uint64_t));
-	if (!rows || !cols || !pairs) {
+	if (!rows || !cols) {
 		goto cleanup;
 	}
 
 	GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nvals, m);
 	for (GrB_Index k = 0; k < nvals; k++) {
-		pairs[k] = ((uint64_t)rows[k] << 32) | (uint32_t)cols[k];
+		rows[k] = ((uint64_t)rows[k] << 32) | (uint32_t)cols[k];
 	}
-	qsort(pairs, nvals, sizeof(uint64_t), cmp_u64);
-	hash = fnv1a_update(hash, pairs, nvals * sizeof(uint64_t));
+	qsort(rows, nvals, sizeof(uint64_t), cmp_u64);
+	hash = fnv1a_update(hash, rows, nvals * sizeof(uint64_t));
 
 cleanup:
 	free(rows);
 	free(cols);
-	free(pairs);
 	return hash;
 }
 

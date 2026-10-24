@@ -41,8 +41,6 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GrB_Matrix *paths = NULL;
 	GrB_Matrix *adj_matrices = NULL;
 	GrB_Matrix comp_result = NULL;
-	GrB_Index *rows = NULL;
-	GrB_Index *cols = NULL;
 	MRGrammar_t grammar = {0};
 	BinaryRuleInfo *rule_table = NULL;
 
@@ -78,21 +76,9 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 
 	GrB_Index nnz = 0;
 	GRB_TRY(GrB_Matrix_nvals(&nnz, comp_result));
-
 	if (nnz > 0) {
-		rows = malloc(nnz * sizeof(GrB_Index));
-		cols = malloc(nnz * sizeof(GrB_Index));
-		if (!rows || !cols) {
-			info = GrB_OUT_OF_MEMORY;
-			goto cleanup;
-		}
-
-		GRB_TRY(GrB_Matrix_extractTuples_BOOL(rows, cols, NULL, &nnz, comp_result));
-
-		for (GrB_Index k = 0; k < nnz; k++) {
-			GRB_TRY(GrB_Matrix_setElement_BOOL(result, true, vmap[rows[k]],
-											   vmap[cols[k]]));
-		}
+		GRB_TRY(GrB_Matrix_assign(result, NULL, GrB_LOR, comp_result, vmap, comp->n,
+								  vmap, comp->n, NULL));
 	}
 
 cleanup:
@@ -102,8 +88,6 @@ cleanup:
 		}
 		free((void *)adj_matrices);
 	}
-	free(rows);
-	free(cols);
 	GrB_Matrix_free(&comp_result);
 	LAGraph_CFL_AllPaths_adv_free_outputs(
 		paths, grammar.nonterms_count + grammar.terms_count, &all_paths_t);
@@ -120,8 +104,6 @@ GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
 	IdrGraph *components = NULL;
 	GrB_Index **vertex_maps = NULL;
 	GrB_Index comp_count = 0;
-	GrB_Index *rows = NULL;
-	GrB_Index *cols = NULL;
 
 	GRB_TRY(GrB_Matrix_new(result, GrB_BOOL, graph->n, graph->n));
 	GRB_TRY(split_IdrGraph_into_components(graph, &components, &vertex_maps,
@@ -138,8 +120,6 @@ GrB_Info idr_get_under_approx(GrB_Matrix *result, const IdrGraph *graph,
 	}
 
 cleanup:
-	free(rows);
-	free(cols);
 	free(components);
 	free((void *)vertex_maps);
 	return info;
