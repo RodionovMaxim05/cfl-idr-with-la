@@ -452,7 +452,7 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
  *
  * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
-static inline GrB_Info get_or_open_paths_view(PathsView **out_fview,
+static inline GrB_Info get_or_open_paths_view(PathsView **out_view,
 											  PathsView *fast_paths,
 											  GrB_Matrix *paths, int32_t nonterm_idx,
 											  GrB_Index n) {
@@ -460,11 +460,11 @@ static inline GrB_Info get_or_open_paths_view(PathsView **out_fview,
 		GrB_Info info =
 			paths_view_open(&fast_paths[nonterm_idx], paths[nonterm_idx], n);
 		if (info != GrB_SUCCESS) {
-			*out_fview = NULL;
+			*out_view = NULL;
 			return info;
 		}
 	}
-	*out_fview = &fast_paths[nonterm_idx];
+	*out_view = &fast_paths[nonterm_idx];
 	return GrB_SUCCESS;
 }
 
@@ -472,7 +472,7 @@ static inline bool mid_entry_uses_heap(const MidEntry *e) {
 	return e->rule_count > MID_ENTRY_INLINE_CAP + 1;
 }
 
-static inline int32_t mid_entry_rest_id(const MidEntry *e, uint32_t k) {
+static inline uint32_t mid_entry_rest_id(const MidEntry *e, uint32_t k) {
 	if (mid_entry_uses_heap(e)) {
 		return e->rest.rule_ids_rest[k];
 	}
@@ -573,7 +573,7 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 		const NontermRules *rules = &ctx->grammar_idx[A];
 
 		// Iterate over intermediate vertices
-		for (GrB_Index ki = 0; ki < elem.n; ki++) {
+		for (size_t ki = 0; ki < elem.n; ki++) {
 			MidEntry entry =
 				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
 			GrB_Index mid = entry.mid;
@@ -602,8 +602,8 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 			uint32_t rule_count = entry.rule_count;
 
 			for (uint32_t part = 0; part < rule_count; part++) {
-				int32_t rid = (part == 0) ? entry.rule_id0
-										  : mid_entry_rest_id(&entry, part - 1);
+				uint32_t rid = (part == 0) ? entry.rule_id0
+										   : mid_entry_rest_id(&entry, part - 1);
 				BinaryRuleInfo ri = ctx->rule_table[rid];
 
 				GRB_TRY(push_unvisited_path_step(ctx->stack, ctx->fast_paths,
