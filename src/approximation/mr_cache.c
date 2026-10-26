@@ -81,7 +81,6 @@ static void free_step_result(MRStepResult *r) {
 		return;
 	}
 	LAGraph_CFL_AllPaths_adv_free_outputs(r->matrices, r->count, &r->all_paths_t);
-	free(r->rule_table);
 	GrB_free(&r->all_paths_t);
 	memset(r, 0, sizeof(*r));
 }
@@ -150,8 +149,8 @@ const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_
 }
 
 GrB_Info mr_cache_insert_raw(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
-							 GrB_Matrix *paths_matrices, BinaryRuleInfo *rule_table,
-							 int64_t symbols_amount, GrB_Type all_paths_t) {
+							 GrB_Matrix *paths_matrices, int64_t symbols_amount,
+							 GrB_Type all_paths_t) {
 	if (!c) {
 		return GrB_SUCCESS;
 	}
@@ -170,7 +169,6 @@ GrB_Info mr_cache_insert_raw(MRCache *c, uint64_t graph_key, uint32_t grammar_ta
 	e->graph_key = graph_key;
 	e->grammar_tag = grammar_tag;
 	e->value.matrices = paths_matrices;
-	e->value.rule_table = rule_table;
 	e->value.count = symbols_amount;
 	e->value.all_paths_t = all_paths_t;
 

@@ -45,7 +45,6 @@ typedef struct {
  *                           caller or set to `NULL` pointers.
  * @param[in]  paths         Array of `grammar.nonterms_count` CFL-reachability
  *                           result matrices from `LAGraph_CFL_AllPaths`.
- * @param[in]  rule_table    Binary rule table for derivation tracing.
  * @param[in]  adj_matrices  Input adjacency matrices for each terminal symbol.
  * @param[in]  grammar       Grammar specification.
  * @param[in]  n             Number of vertices (matrix dimension).
@@ -59,7 +58,6 @@ typedef struct {
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
-									const BinaryRuleInfo *rule_table,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									GrB_Index n, int64_t n_par, int64_t n_bra,
 									const MRGrammarConfig *config,

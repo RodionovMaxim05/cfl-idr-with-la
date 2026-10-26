@@ -26,7 +26,6 @@
  * @param[in]     paths        Array of CFL-reachability output matrices (one per
  *                             grammar nonterminal). Must have at least
  *                             `grammar.nonterms_count` elements.
- * @param[in]     rule_table   Binary rule table for derivation tracing.
  * @param[in]     adj_matrices Input adjacency matrices for edge extraction.
  * @param[in]     grammar      Grammar specification used in the CFL analysis.
  * @param[in]     comp         Component graph being analyzed. Used for metadata
@@ -35,7 +34,6 @@
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
 GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths,
-									  const BinaryRuleInfo *rule_table,
 									  GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									  const IdrGraph *comp);
 

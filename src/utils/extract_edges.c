@@ -468,23 +468,265 @@ static inline GrB_Info get_or_open_paths_view(PathsView **out_view,
 	return GrB_SUCCESS;
 }
 
-static inline bool mid_entry_uses_heap(const MidEntry *e) {
-	return e->rule_count > MID_ENTRY_INLINE_CAP + 1;
-}
+/**
+ * @brief Binary rule A -> B C without the left-hand side (stored grouped by A).
+ */
+typedef struct {
+	int32_t B; // First symbol on the right-hand side
+	int32_t C; // Second symbol on the right-hand side
+} BinRule;
 
-static inline uint32_t mid_entry_rest_id(const MidEntry *e, uint32_t k) {
-	if (mid_entry_uses_heap(e)) {
-		return e->rest.rule_ids_rest[k];
+/**
+ * @brief CSR-like index of binary rules grouped by the left-hand nonterminal.
+ *
+ * Rules of nonterminal A are `rules[offset[A] .. offset[A + 1])`.
+ */
+typedef struct {
+	BinRule *rules;	 // Binary rules sorted by left-hand nonterminal
+	size_t *offset;	 // nonterms_count + 1 offsets into `rules`
+	size_t nonterms; // Number of nonterminals
+} BinaryIndex;
+
+static void free_binary_index(BinaryIndex *bi) {
+	if (!bi) {
+		return;
 	}
-	return e->rest.inline_ids[k];
+	free(bi->rules);
+	free(bi->offset);
+	memset(bi, 0, sizeof(*bi));
 }
 
 /**
- * @brief Attempts to push a path derivation step $(i, j)$ for nonterminal $A$ onto
- * the DFS stack.
+ * @brief Role-to-nonterminal-id mapping used by grammar patterns.
  *
- * Performs element presence lookup in the corresponding `PathsView` and checks if
- * the entry was already visited using the bitset.
+ * Must stay identical to `pat_role_id` in LAGraph_CFL_AllPaths_adv.
+ */
+static inline int32_t pat_role_id(const LAGraph_Pat_role *role, int64_t mask,
+								  int64_t qr, int64_t qc, int64_t i) {
+	if (role->kind == LAGraph_PAT_SYM_PLAIN) {
+		return role->base + (int32_t)i;
+	}
+	return role->base + (int32_t)(mask * role->mask_stride + qr * role->qrow_stride +
+								  qc * role->qcol_stride + i);
+}
+
+/**
+ * @brief State of the two-pass (count / fill) enumeration of concrete binary rules.
+ */
+typedef struct {
+	BinaryIndex *bi;	  // Index being built
+	const GrB_Index *nnz; // nvals of paths[a] for every nonterminal a
+	size_t nonterms;	  // Number of nonterminals
+	size_t *cursor;		  // Write cursors (fill pass only)
+	bool fill;			  // false: count pass, true: fill pass
+} EmitCtx;
+
+/**
+ * @brief Records a concrete rule A -> B C, skipping out-of-range symbols and rules
+ * with an empty matrix (such rules could never have produced a middle vertex).
+ */
+static inline void emit_rule(EmitCtx *c, int32_t A, int32_t B, int32_t C) {
+	size_t n = c->nonterms;
+	if (A < 0 || B < 0 || C < 0 || (size_t)A >= n || (size_t)B >= n ||
+		(size_t)C >= n) {
+		return;
+	}
+	if (c->nnz[A] == 0 || c->nnz[B] == 0 || c->nnz[C] == 0) {
+		return;
+	}
+	if (!c->fill) {
+		c->bi->offset[A + 1]++;
+	} else {
+		c->bi->rules[c->cursor[A]++] = (BinRule){.B = B, .C = C};
+	}
+}
+
+/**
+ * @brief Enumerates all concrete binary rules A -> B C of the grammar.
+ *
+ * Mirrors the expansion done by LAGraph_CFL_AllPaths_adv: indexed rules are
+ * exploded first, then CONV / SCALE / LEFT / RIGHT patterns are unrolled.
+ */
+static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
+	for (int64_t r = 0; r < g->rules_count; r++) {
+		const LAGraph_rule_EWCNF base = g->rules[r];
+		if (base.prod_A == -1 || base.prod_B == -1) {
+			continue; // eps / terminal rule
+		}
+
+		int64_t reps = (base.indexed_count == 0) ? 1 : (int64_t)base.indexed_count;
+		for (int64_t ri = 0; ri < reps; ri++) {
+			LAGraph_rule_EWCNF bin_rule = base;
+			if (base.indexed_count != 0) {
+				bin_rule.indexed_count = 0;
+				bin_rule.indexed = 0;
+				if (base.nonterm != -1 &&
+					(base.indexed & LAGraph_EWNCF_INDEX_NONTERM)) {
+					bin_rule.nonterm = base.nonterm + (int32_t)ri;
+				}
+				if (base.prod_A != -1 &&
+					(base.indexed & LAGraph_EWNCF_INDEX_PROD_A)) {
+					bin_rule.prod_A = base.prod_A + (int32_t)ri;
+				}
+				if (base.prod_B != -1 &&
+					(base.indexed & LAGraph_EWNCF_INDEX_PROD_B)) {
+					bin_rule.prod_B = base.prod_B + (int32_t)ri;
+				}
+			}
+
+			const LAGraph_rule_Pat *pat = bin_rule.pat;
+
+			if (pat != NULL && pat->kind == LAGraph_PAT_CONV) {
+				int64_t N = pat->masks, R = pat->states, K = pat->idx_count;
+				if (pat->element == LAGraph_PAT_ALL_ELEMENTS) {
+					for (int64_t m = 0; m < N; m++) {
+						for (int64_t im = 0; im < N; im++) {
+							for (int64_t qs = 0; qs < R; qs++) {
+								for (int64_t qm = 0; qm < R; qm++) {
+									for (int64_t qe = 0; qe < R; qe++) {
+										for (int64_t k = 0; k < K; k++) {
+											emit_rule(ctx,
+													  pat_role_id(&pat->role[0], m,
+																  qs, qe, 0),
+													  pat_role_id(&pat->role[1], im,
+																  qs, qm, k),
+													  pat_role_id(&pat->role[2],
+																  m ^ im, qm, qe,
+																  0));
+										}
+									}
+								}
+							}
+						}
+					}
+				} else {
+					int64_t el = pat->element;
+					uint32_t st_count = pat->state ? pat->state->nnz : (uint32_t)R;
+					for (int64_t m = 0; m < N; m++) {
+						for (uint32_t st = 0; st < st_count; st++) {
+							int64_t qs =
+								pat->state ? pat->state->entries[st].row : st;
+							int64_t qmid =
+								pat->state ? pat->state->entries[st].col : st;
+							for (int64_t qe = 0; qe < R; qe++) {
+								emit_rule(
+									ctx, pat_role_id(&pat->role[0], m, qs, qe, 0),
+									bin_rule.prod_A,
+									pat_role_id(&pat->role[2], m ^ el, qmid, qe, 0));
+							}
+						}
+					}
+				}
+				continue;
+			}
+
+			if (pat != NULL && pat->kind == LAGraph_PAT_SCALE) {
+				int64_t N = pat->masks, R = pat->states;
+				for (int64_t m = 0; m < N; m++) {
+					for (int64_t qs = 0; qs < R; qs++) {
+						for (int64_t qe = 0; qe < R; qe++) {
+							emit_rule(ctx, pat_role_id(&pat->role[0], m, qs, qe, 0),
+									  bin_rule.prod_A,
+									  pat_role_id(&pat->role[2], m, qs, qe, 0));
+						}
+					}
+				}
+				continue;
+			}
+
+			if (pat != NULL &&
+				(pat->kind == LAGraph_PAT_LEFT || pat->kind == LAGraph_PAT_RIGHT)) {
+				int64_t N = pat->masks, R = pat->states;
+				int64_t off = bin_rule.nonterm - pat->role[0].base;
+				if (off < 0 || off >= (int64_t)pat->idx_count) {
+					continue;
+				}
+				for (int64_t im = 0; im < N; im++) {
+					for (int64_t qs = 0; qs < R; qs++) {
+						for (int64_t qm = 0; qm < R; qm++) {
+							int32_t cA = pat_role_id(&pat->role[0], im, qs, qm, off);
+							if (pat->kind == LAGraph_PAT_LEFT) {
+								emit_rule(
+									ctx, cA, bin_rule.prod_A,
+									pat_role_id(&pat->role[2], im, qs, qm, off));
+							} else {
+								emit_rule(ctx, cA,
+										  pat_role_id(&pat->role[1], im, qs, qm, 0),
+										  bin_rule.prod_B);
+							}
+						}
+					}
+				}
+				continue;
+			}
+
+			// Plain binary rule
+			emit_rule(ctx, bin_rule.nonterm, bin_rule.prod_A, bin_rule.prod_B);
+		}
+	}
+}
+
+/**
+ * @brief Builds the per-nonterminal index of concrete binary rules directly from
+ * the grammar (the rule table returned by the AllPaths algorithm is not used).
+ *
+ * @param[out] bi   Resulting index (free with free_binary_index).
+ * @param[in]  g    Grammar.
+ * @param[in]  paths AllPaths matrices, used only to skip rules with empty
+ * matrices.
+ */
+static GrB_Info build_binary_index(BinaryIndex *bi, const MRGrammar_t *g,
+								   GrB_Matrix *paths) {
+	size_t nonterms = (size_t)g->nonterms_count;
+	memset(bi, 0, sizeof(*bi));
+	bi->nonterms = nonterms;
+
+	GrB_Index *nnz = calloc(nonterms ? nonterms : 1, sizeof(GrB_Index));
+	size_t *cursor = calloc(nonterms ? nonterms : 1, sizeof(size_t));
+	bi->offset = calloc(nonterms + 1, sizeof(size_t));
+	if (!nnz || !cursor || !bi->offset) {
+		free(nnz);
+		free(cursor);
+		free_binary_index(bi);
+		return GrB_OUT_OF_MEMORY;
+	}
+	for (size_t a = 0; a < nonterms; a++) {
+		if (paths[a] != NULL) {
+			GrB_Matrix_nvals(&nnz[a], paths[a]);
+		}
+	}
+
+	EmitCtx ctx = {
+		.bi = bi, .nnz = nnz, .nonterms = nonterms, .cursor = cursor, .fill = false};
+	enumerate_binary_rules(g, &ctx); // count pass
+
+	for (size_t a = 0; a < nonterms; a++) {
+		bi->offset[a + 1] += bi->offset[a];
+	}
+	size_t total = bi->offset[nonterms];
+	bi->rules = malloc((total ? total : 1) * sizeof(BinRule));
+	if (!bi->rules) {
+		free(nnz);
+		free(cursor);
+		free_binary_index(bi);
+		return GrB_OUT_OF_MEMORY;
+	}
+	memcpy(cursor, bi->offset, nonterms * sizeof(size_t));
+
+	ctx.fill = true;
+	enumerate_binary_rules(g, &ctx); // fill pass
+
+	free(nnz);
+	free(cursor);
+	return GrB_SUCCESS;
+}
+
+/**
+ * @brief Attempts to push a path derivation step $(i, j)$ for nonterminal $A$
+ * onto the DFS stack.
+ *
+ * Performs element presence lookup in the corresponding `PathsView` and checks
+ * if the entry was already visited using the bitset.
  *
  * @param[in,out] st         Pointer to the active stack.
  * @param[in,out] fast_paths Array of cached `PathsView` objects.
@@ -525,6 +767,26 @@ cleanup:
 }
 
 /**
+ * @brief Marks an already located element as visited and pushes it onto the
+ * stack.
+ *
+ * Unlike push_unvisited_path_step, the element must have been found beforehand
+ * (so that both halves of a binary split can be validated before pushing
+ * either).
+ *
+ * @return `GrB_SUCCESS` or `GrB_OUT_OF_MEMORY`.
+ */
+static inline GrB_Info claim_and_push(Stack *st, PathsView *v, GrB_Index row_idx,
+									  GrB_Index col_idx, int32_t nonterm,
+									  GrB_Index idx) {
+	if (test_and_set(v->visited, idx)) {
+		return GrB_SUCCESS;
+	}
+	return stack_push(st, row_idx, col_idx, nonterm, idx) ? GrB_SUCCESS
+														  : GrB_OUT_OF_MEMORY;
+}
+
+/**
  * @brief Bundles runtime context and resources required for edge extraction.
  *
  * Passed across helper routines to minimize parameter passing during DFS stack
@@ -535,12 +797,11 @@ typedef struct {
 	PathsView *fast_paths; // Array of HyperCSR views per nonterminal symbol
 	GrB_Matrix *paths;	   // Raw GraphBLAS matrices for nonterminals
 	GrB_Matrix *out;	   // Output GraphBLAS matrices for extracted terminal edges
-	GrB_Matrix *adj_matrices; // Input graph adjacency matrices for terminals
-	const BinaryRuleInfo
-		*rule_table; // Lookup table for binary grammar rules (A -> B C)
-	const NontermRules *grammar_idx;	// Index of terminal grammar rules (A -> a)
-	const int32_t *grammar_to_straight; // Interleaved to linear index mapping table
-										// for terminals
+	GrB_Matrix *adj_matrices;		 // Input graph adjacency matrices for terminals
+	const BinaryIndex *bin_index;	 // Binary rules (A -> B C) grouped by A
+	const NontermRules *grammar_idx; // Index of terminal grammar rules (A -> a)
+	const int32_t *grammar_to_straight; // Interleaved to linear index mapping
+										// table for terminals
 	MRGrammar_t grammar;				// Context-free grammar definition
 	GrB_Index n;						// Number of vertices in the graph
 } ExtractionContext;
@@ -549,9 +810,9 @@ typedef struct {
  * @brief Drains current stack completely in DFS order to reconstruct derivation
  * trees.
  *
- * Recursively pops derivation elements, splits binary rules $A \to B C$, and records
- * terminal edges into output matrices when terminal derivations $A \to a$ are
- * reached.
+ * Recursively pops derivation elements, splits binary rules $A \to B C$, and
+ * records terminal edges into output matrices when terminal derivations $A \to
+ * a$ are reached.
  *
  * @param[in,out] ctx Pointer to the active extraction context.
  *
@@ -572,11 +833,14 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 
 		const NontermRules *rules = &ctx->grammar_idx[A];
 
+		const BinaryIndex *bi = ctx->bin_index;
+		size_t r_begin = bi->offset[A];
+		size_t r_end = bi->offset[A + 1];
+
 		// Iterate over intermediate vertices
 		for (size_t ki = 0; ki < elem.n; ki++) {
-			MidEntry entry =
+			GrB_Index mid =
 				(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
-			GrB_Index mid = entry.mid;
 
 			if (mid == GrB_INDEX_MAX) {
 				// Terminal edge: A -> term
@@ -598,18 +862,27 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 				continue;
 			}
 
-			// Binary split: A -> B C via mid
-			uint32_t rule_count = entry.rule_count;
+			// Binary split A -> B C via mid. The rule id is not stored in the
+			// element, so every rule of A is tested: it is a valid split iff
+			// both B(i, mid) and C(mid, j) are present.
+			for (size_t r = r_begin; r < r_end; r++) {
+				BinRule br = bi->rules[r];
+				PathsView *vB = NULL, *vC = NULL;
+				GrB_Index idxB, idxC;
 
-			for (uint32_t part = 0; part < rule_count; part++) {
-				uint32_t rid = (part == 0) ? entry.rule_id0
-										   : mid_entry_rest_id(&entry, part - 1);
-				BinaryRuleInfo ri = ctx->rule_table[rid];
+				GRB_TRY(get_or_open_paths_view(&vB, ctx->fast_paths, ctx->paths,
+											   br.B, ctx->n));
+				if (!paths_view_find_elem(vB, i, mid, &idxB)) {
+					continue;
+				}
+				GRB_TRY(get_or_open_paths_view(&vC, ctx->fast_paths, ctx->paths,
+											   br.C, ctx->n));
+				if (!paths_view_find_elem(vC, mid, j, &idxC)) {
+					continue;
+				}
 
-				GRB_TRY(push_unvisited_path_step(ctx->stack, ctx->fast_paths,
-												 ctx->paths, i, mid, ri.B, ctx->n));
-				GRB_TRY(push_unvisited_path_step(ctx->stack, ctx->fast_paths,
-												 ctx->paths, mid, j, ri.C, ctx->n));
+				GRB_TRY(claim_and_push(ctx->stack, vB, i, mid, br.B, idxB));
+				GRB_TRY(claim_and_push(ctx->stack, vC, mid, j, br.C, idxC));
 			}
 		}
 	}
@@ -620,7 +893,6 @@ cleanup:
 }
 
 GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
-									const BinaryRuleInfo *rule_table,
 									GrB_Matrix *adj_matrices, MRGrammar_t grammar,
 									GrB_Index n, int64_t n_par, int64_t n_bra,
 									const MRGrammarConfig *config,
@@ -628,6 +900,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 	GrB_Info info = GrB_SUCCESS;
 
 	NontermRules *grammar_idx = NULL;
+	BinaryIndex bin_index = {0};
 	Stack stack = stack_new();
 	int32_t *grammar_to_straight = NULL;
 	PathsView *fast_paths = NULL;
@@ -685,6 +958,8 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		goto cleanup;
 	}
 
+	GRB_TRY(build_binary_index(&bin_index, &grammar, paths));
+
 	fast_paths = calloc((size_t)grammar.nonterms_count, sizeof(PathsView));
 	if (!fast_paths) {
 		info = GrB_OUT_OF_MEMORY;
@@ -696,7 +971,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 							 .paths = paths,
 							 .out = out,
 							 .adj_matrices = adj_matrices,
-							 .rule_table = rule_table,
+							 .bin_index = &bin_index,
 							 .grammar_idx = grammar_idx,
 							 .grammar_to_straight = grammar_to_straight,
 							 .grammar = grammar,
@@ -751,6 +1026,7 @@ cleanup:
 	}
 	free(grammar_to_straight);
 	free_grammar_index(grammar_idx, grammar.nonterms_count);
+	free_binary_index(&bin_index);
 	stack_free(&stack);
 	return info;
 }

@@ -42,7 +42,7 @@ jobs:
       - name: Get LAGraph Commit SHA
         id: lagraph-sha
         run: |
-          SHA=$(git ls-remote https://github.com/RodionovMaxim05/LAGraph.git refs/heads/cfl-idr-pattern-exp | awk '{print $1}')
+          SHA=$(git ls-remote https://github.com/RodionovMaxim05/LAGraph.git refs/heads/cfl-idr-def-allpaths-elem | awk '{print $1}')
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Cache LAGraph
@@ -55,7 +55,7 @@ jobs:
       - name: Clone LAGraph
         if: steps.cache-lagraph.outputs.cache-hit != 'true'
         run: |
-          git clone --depth=1 --branch cfl-idr-pattern-exp \
+          git clone --depth=1 --branch cfl-idr-def-allpaths-elem \
           https://github.com/RodionovMaxim05/LAGraph.git ~/lagraph
 
       - name: Build

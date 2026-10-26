@@ -42,7 +42,6 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GrB_Matrix *adj_matrices = NULL;
 	GrB_Matrix comp_result = NULL;
 	MRGrammar_t grammar = {0};
-	BinaryRuleInfo *rule_table = NULL;
 
 	grammar = get_dyck_grammar(comp->n_par, comp->n_bra, comp->normal != NULL);
 	if (!grammar.rules) {
@@ -61,7 +60,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, &rule_table, adj_matrices,
+	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj_matrices,
 									 grammar.terms_count + grammar.nonterms_count,
 									 grammar.rules, grammar.rules_count, msg,
 									 OPT_EMPTY | OPT_FORMAT | OPT_LAZY | OPT_BLOCK));
@@ -70,8 +69,8 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GRB_TRY(extract_non_trivial_paths(&comp_result, paths[0]));
 
 	if (valueflow) {
-		GRB_TRY(apply_valueflow_under_approx(&comp_result, paths, rule_table,
-											 adj_matrices, grammar, comp));
+		GRB_TRY(apply_valueflow_under_approx(&comp_result, paths, adj_matrices,
+											 grammar, comp));
 	}
 
 	GrB_Index nnz = 0;
@@ -92,7 +91,6 @@ cleanup:
 	LAGraph_CFL_AllPaths_adv_free_outputs(
 		paths, grammar.nonterms_count + grammar.terms_count, &all_paths_t);
 	GrB_free(&all_paths_t);
-	LAGraph_Free((void **)&rule_table, NULL);
 	grammar_free(&grammar);
 	return info;
 }

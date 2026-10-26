@@ -61,16 +61,13 @@ static GrB_Info dup_matrices_into(GrB_Matrix *dst, GrB_Matrix *src, int64_t coun
  *
  * @param[in,out] paths       Array of output matrices to free. May be `NULL`.
  * @param[in]     count       Number of matrices in `paths`.
- * @param[in,out] rule_table  Binary rule metadata array. May be `NULL`.
  * @param[in,out] all_paths_t GraphBLAS type descriptor to release.
  */
-static void free_raw(GrB_Matrix *paths, int64_t count, BinaryRuleInfo *rule_table,
-					 GrB_Type *all_paths_t) {
+static void free_raw(GrB_Matrix *paths, int64_t count, GrB_Type *all_paths_t) {
 	if (!paths) {
 		return;
 	}
 	LAGraph_CFL_AllPaths_adv_free_outputs(paths, count, all_paths_t);
-	free(rule_table);
 	GrB_free(all_paths_t);
 }
 
@@ -83,7 +80,6 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	GrB_Matrix *adj = NULL;
 	GrB_Type all_paths_t = NULL;
 	GrB_Matrix *paths = NULL;
-	BinaryRuleInfo *rule_table = NULL;
 	bool raw_ready = false;
 	bool raw_cached = false;
 	GrB_Matrix *cached_edges = NULL;
@@ -112,7 +108,6 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 
 	if (raw_hit) {
 		raw_res = raw_hit->matrices;
-		rule_table = raw_hit->rule_table;
 	} else {
 		if (cache->raw_count + cache->refined_count > 0) {
 			int memory_status = is_system_memory_critical(RAM_BUDGET_PERCENT);
@@ -131,9 +126,9 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 		}
 
 		GRB_TRY(LAGraph_CFL_AllPaths_adv(
-			paths, &all_paths_t, &rule_table, adj,
-			grammar.nonterms_count + grammar.terms_count, grammar.rules,
-			grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK | OPT_PAT));
+			paths, &all_paths_t, adj, grammar.nonterms_count + grammar.terms_count,
+			grammar.rules, grammar.rules_count, msg,
+			OPT_EMPTY | OPT_BLOCK | OPT_PAT));
 
 		raw_ready = true;
 		raw_res = paths;
@@ -142,9 +137,9 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 	if (target_path) {
 		*target_found = matrix_has_path_udt(raw_res[0], target_path);
 		if (*target_found) {
-			GRB_TRY(extract_edges_from_outputs(
-				*out_edges, raw_res, rule_table, adj, grammar, graph->n,
-				graph->n_par, graph->n_bra, &grammar.config, target_path));
+			GRB_TRY(extract_edges_from_outputs(*out_edges, raw_res, adj, grammar,
+											   graph->n, graph->n_par, graph->n_bra,
+											   &grammar.config, target_path));
 
 			GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 			GRB_TRY(GrB_Matrix_setElement_BOOL(*out_reachability, true,
@@ -160,23 +155,22 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 
 		if (!raw_hit && cache) {
 			GrB_Info ins = mr_cache_insert_raw(
-				cache, key, grammar_tag, paths, rule_table,
+				cache, key, grammar_tag, paths,
 				grammar.nonterms_count + grammar.terms_count, all_paths_t);
 			raw_cached = (ins == GrB_SUCCESS);
 		}
 	} else {
-		GRB_TRY(extract_edges_from_outputs(
-			*out_edges, raw_res, rule_table, adj, grammar, graph->n, graph->n_par,
-			graph->n_bra, &grammar.config, target_path));
+		GRB_TRY(extract_edges_from_outputs(*out_edges, raw_res, adj, grammar,
+										   graph->n, graph->n_par, graph->n_bra,
+										   &grammar.config, target_path));
 
 		GRB_TRY(GrB_Matrix_new(out_reachability, GrB_BOOL, graph->n, graph->n));
 		GRB_TRY(extract_non_trivial_paths(out_reachability, raw_res[0]));
 
 		if (raw_ready) {
-			free_raw(paths, grammar.nonterms_count + grammar.terms_count, rule_table,
+			free_raw(paths, grammar.nonterms_count + grammar.terms_count,
 					 &all_paths_t);
 			paths = NULL;
-			rule_table = NULL;
 			raw_ready = false;
 		}
 
@@ -202,8 +196,7 @@ GrB_Info run_cfl_step(const IdrGraph *graph, MRGrammar_t grammar,
 
 cleanup:
 	if (raw_ready && !raw_cached) {
-		free_raw(paths, grammar.nonterms_count + grammar.terms_count, rule_table,
-				 &all_paths_t);
+		free_raw(paths, grammar.nonterms_count + grammar.terms_count, &all_paths_t);
 	}
 	if (cached_edges) {
 		for (int64_t t = 0; t < grammar.terms_count; t++) {

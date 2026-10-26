@@ -29,8 +29,7 @@ typedef enum {
 typedef struct {
 	GrB_Matrix *matrices; // Array of `count` matrices, one per grammar nonterminal
 	int64_t count;		  // Number of nonterminals (length of `matrices`)
-	BinaryRuleInfo *rule_table; // Binary rule table for derivation tracing
-	GrB_Type all_paths_t;		// GraphBLAS type used for path values
+	GrB_Type all_paths_t; // GraphBLAS type used for path values
 } MRStepResult;
 
 /**
@@ -155,14 +154,13 @@ const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_
 /**
  * @brief Inserts a raw intermediate CFL step result into the cache.
  *
- * Takes ownership of `paths_matrices`, `rule_table`, and `all_paths_t`.
+ * Takes ownership of `paths_matrices`, and `all_paths_t`.
  * Dynamically resizes the `raw` entry array when capacity is exceeded.
  *
  * @param[in,out] c              Cache to insert into. Must not be `NULL`.
  * @param[in]     graph_key      Hash of the input graph.
  * @param[in]     grammar_tag    Grammar variant tag.
  * @param[in]     paths_matrices Array of nonterminal and terminal output matrices.
- * @param[in]     rule_table     Binary rule lookup table.
  * @param[in]     symbols_amount Number of nonterminals and terminals.
  * @param[in]     all_paths_t    GraphBLAS type for path values.
  *
@@ -173,8 +171,8 @@ const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_
  *       `mr_cache_free` is called.
  */
 GrB_Info mr_cache_insert_raw(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
-							 GrB_Matrix *paths_matrices, BinaryRuleInfo *rule_table,
-							 int64_t symbols_amount, GrB_Type all_paths_t);
+							 GrB_Matrix *paths_matrices, int64_t symbols_amount,
+							 GrB_Type all_paths_t);
 
 /**
  * @brief Inserts a refined edges result and reachability matrix into the cache.
