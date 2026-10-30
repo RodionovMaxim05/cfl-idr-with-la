@@ -852,13 +852,12 @@ static int compare_bin_rules_by_B(const void *a, const void *b) {
 }
 
 /**
- * @brief Builds the per-nonterminal index of concrete binary rules directly from
- * the grammar.
+ * @brief Builds the per-nonterminal index of concrete binary rules directly from the
+ * grammar.
  *
  * @param[out] bi    Resulting index (free with free_binary_index).
  * @param[in]  g     Grammar.
- * @param[in]  paths AllPaths matrices, used only to skip rules with empty
- *                   matrices.
+ * @param[in]  paths AllPaths matrices, used only to skip rules with empty matrices.
  *
  * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
@@ -996,6 +995,19 @@ typedef struct {
 } ExtractionContext;
 
 /**
+ * @brief Fast scan for the next live rule index in the binary rules array.
+ */
+static inline size_t next_live(const BinRule *rules, size_t r, size_t end,
+							   const uint64_t *rb) {
+	for (; r < end; r++) {
+		int32_t B = rules[r].B;
+		if ((rb[B >> 6] >> (B & 63)) & 1)
+			return r;
+	}
+	return end;
+}
+
+/**
  * @brief Drains current stack completely in DFS order to reconstruct derivation
  * trees.
  *
@@ -1058,19 +1070,13 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 			(rp && rp->bits) ? (rp->bits + (size_t)i * rp->words) : NULL;
 
 		size_t r = r_begin;
-		while (r < r_end) {
+		while ((r = next_live(bi->rules, r, r_end, rb)) < r_end) {
 			int32_t current_B = bi->rules[r].B;
 
 			// Find group range of rules having the same left-child symbol B
 			size_t r_b_end = r + 1;
 			while (r_b_end < r_end && bi->rules[r_b_end].B == current_B) {
 				r_b_end++;
-			}
-
-			// O(1) bitset check: Skip symbol B if it has no entries in row i
-			if (rb && !((rb[current_B >> 6] >> (current_B & 63)) & 1)) {
-				r = r_b_end;
-				continue;
 			}
 
 			PathsView *vB = NULL;
