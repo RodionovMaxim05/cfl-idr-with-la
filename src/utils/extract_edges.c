@@ -52,6 +52,19 @@ typedef struct {
 } PathsView;
 
 /**
+ * @brief Dense bitset matrix storing row presence per nonterminal symbol.
+ *
+ * Allows O(1) determination of whether nonterminal B has non-empty entries in row i
+ * without opening or performing lookups in full HyperCSR view structures.
+ * `bits[i * words + (B >> 6)]` has bit `(B & 63)` set if nonterminal B has non-empty
+ * row i.
+ */
+typedef struct {
+	size_t words;	// Number of 64-bit words per row: ceil(nonterms_count / 64)
+	uint64_t *bits; // Dense row-major bitset array of size (n * words)
+} RowPresence;
+
+/**
  * @brief Tests and sets a specific bit in a bitset array.
  *
  * @param[in,out] b Pointer to the bitset array.
@@ -109,6 +122,7 @@ static GrB_Info paths_view_build_buckets(PathsView *v, GrB_Index n) {
 		max_nb = v->nvec; // Fallback to baseline nvec density
 	}
 
+	// Calculate minimal shift such that total buckets <= max_nb
 	uint32_t shift = 0;
 	while (((n >> shift) + 1) > max_nb) {
 		shift++;
@@ -123,6 +137,7 @@ static GrB_Info paths_view_build_buckets(PathsView *v, GrB_Index n) {
 	v->shift = shift;
 	v->nbuckets = nb;
 
+	// Populate bucket start positions in Ah array
 	GrB_Index m = 0;
 	for (GrB_Index b = 0; b <= nb; b++) {
 		while (m < v->nvec && (v->Ah[m] >> shift) < b) {
@@ -176,21 +191,161 @@ cleanup:
 }
 
 /**
- * @brief Looks up a column index `col_idx` in row `row_idx` using bucket indexing,
- * direct row resolution when shift==0, combined binary search, and linear scan.
+ * @brief Lazily retrieves or opens the zero-copy HyperCSR `PathsView` for
+ * nonterminal `paths[nonterm_idx]`.
  *
- * Performs bucket-assisted search on `Ah` to locate the active row, followed by a
- * search on `Aj` to locate the column.
+ * @param[out]    out_view    Output pointer to the opened `PathsView`.
+ * @param[in,out] fast_paths  Array of views per nonterminal symbol.
+ * @param[in]     paths       Array of GraphBLAS nonterminal matrices.
+ * @param[in]     nonterm_idx Index of the nonterminal symbol.
+ * @param[in]     n           Total number of vertices in the graph.
+ *
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
+ */
+static inline GrB_Info get_or_open_paths_view(PathsView **out_view,
+											  PathsView *fast_paths,
+											  GrB_Matrix *paths, int32_t nonterm_idx,
+											  GrB_Index n) {
+	if (!fast_paths[nonterm_idx].open) {
+		GrB_Info info =
+			paths_view_open(&fast_paths[nonterm_idx], paths[nonterm_idx], n);
+		if (info != GrB_SUCCESS) {
+			*out_view = NULL;
+			return info;
+		}
+	}
+	*out_view = &fast_paths[nonterm_idx];
+	return GrB_SUCCESS;
+}
+
+/**
+ * @brief Binary rule A -> B C without the left-hand side symbol A (stored grouped by
+ * A).
+ */
+typedef struct {
+	int32_t B; // First symbol on the right-hand side
+	int32_t C; // Second symbol on the right-hand side
+} BinRule;
+
+/**
+ * @brief CSR-like index of binary rules grouped by the left-hand nonterminal A.
+ *
+ * Rules of nonterminal A are located at `rules[offset[A] .. offset[A + 1])`.
+ */
+typedef struct {
+	BinRule *rules; // Binary rules sorted by left-hand nonterminal
+	size_t *offset; // nonterms_count + 1 offsets into `rules`
+} BinaryIndex;
+
+/**
+ * @brief Frees resources allocated for a binary rules index.
+ *
+ * @param[in,out] bi Pointer to the `BinaryIndex` to free.
+ */
+static void free_binary_index(BinaryIndex *bi) {
+	if (!bi) {
+		return;
+	}
+	free(bi->rules);
+	free(bi->offset);
+	memset(bi, 0, sizeof(*bi));
+}
+
+/**
+ * @brief One-time construction of row presence bitset matrix for nonterminals B in
+ * binary rules.
+ *
+ * @param[out]    rp             Pointer to the `RowPresence` structure to
+ *                               initialize.
+ * @param[in]     bi             Index of binary rules.
+ * @param[in,out] fast_paths     Array of cached `PathsView` objects.
+ * @param[in]     paths          Array of raw GraphBLAS nonterminal matrices.
+ * @param[in]     nonterms_count Number of nonterminal symbols in the grammar.
+ * @param[in]     n              Total number of vertices in the graph.
+ *
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
+ */
+static GrB_Info init_row_presence(RowPresence *rp, const BinaryIndex *bi,
+								  PathsView *fast_paths, GrB_Matrix *paths,
+								  size_t nonterms_count, GrB_Index n) {
+	memset(rp, 0, sizeof(*rp));
+	if (nonterms_count == 0 || n == 0) {
+		return GrB_SUCCESS;
+	}
+
+	rp->words = (nonterms_count + 63) / 64;
+	rp->bits = calloc((size_t)n * rp->words, sizeof(uint64_t));
+	if (!rp->bits) {
+		return GrB_OUT_OF_MEMORY;
+	}
+
+	bool *processed = calloc(nonterms_count, sizeof(bool));
+	if (!processed) {
+		free(rp->bits);
+		rp->bits = NULL;
+		return GrB_OUT_OF_MEMORY;
+	}
+
+	size_t total_rules = bi->offset[nonterms_count];
+	for (size_t r = 0; r < total_rules; r++) {
+		int32_t B = bi->rules[r].B;
+		if (B < 0 || (size_t)B >= nonterms_count || processed[B]) {
+			continue;
+		}
+		processed[B] = true;
+
+		if (paths[B] == NULL) {
+			continue;
+		}
+
+		PathsView *vB = NULL;
+		GrB_Info info = get_or_open_paths_view(&vB, fast_paths, paths, B, n);
+		if (info != GrB_SUCCESS) {
+			free(processed);
+			free(rp->bits);
+			rp->bits = NULL;
+			return info;
+		}
+
+		size_t word_offset = (size_t)(B >> 6);
+		uint64_t mask = 1ULL << (B & 63);
+
+		for (GrB_Index m = 0; m < vB->nvec; m++) {
+			GrB_Index row = vB->Ah[m];
+			rp->bits[(size_t)row * rp->words + word_offset] |= mask;
+		}
+	}
+
+	free(processed);
+	return GrB_SUCCESS;
+}
+
+/**
+ * @brief Frees resources allocated for a row presence bitset matrix.
+ *
+ * @param[in,out] rp Pointer to the `RowPresence` structure to free.
+ */
+static void free_row_presence(RowPresence *rp) {
+	if (!rp) {
+		return;
+	}
+	free(rp->bits);
+	memset(rp, 0, sizeof(*rp));
+}
+
+/**
+ * @brief Finds the column range `[out_l, out_h)` in array `Aj` for a given
+ * `row_idx`.
  *
  * @param[in]  v       Pointer to the open `PathsView`.
- * @param[in]  row_idx Index of the row (source vertex).
- * @param[in]  col_idx Index of the column (target vertex).
- * @param[out] out_idx Optional pointer to store the linear element index if found.
+ * @param[in]  row_idx Source row index.
+ * @param[out] out_l   Start index in `Aj` for this row.
+ * @param[out] out_h   End index in `Aj` for this row.
  *
- * @return `true` if the entry exists in the matrix view, `false` otherwise.
+ * @return `true` if row exists, `false` otherwise.
  */
-static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
-										GrB_Index col_idx, GrB_Index *out_idx) {
+static inline bool paths_view_find_row_range(const PathsView *v, GrB_Index row_idx,
+											 GrB_Index *out_l, GrB_Index *out_h) {
 	if (!v->open || v->nvec == 0) {
 		return false;
 	}
@@ -204,10 +359,10 @@ static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
 		}
 		lo = v->bstart[b];
 		hi = v->bstart[b + 1];
+		if (lo == hi) {
+			return false; // Row row_idx is not present
+		}
 		if (v->shift == 0) {
-			if (lo == hi) {
-				return false; // Row row_idx is not present
-			}
 			goto have_row; // Ah[lo] == row_idx guaranteed; skip Ah lookup
 		}
 	} else {
@@ -234,10 +389,32 @@ static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
 	}
 
 have_row:
-	// Step 2: Search for col_idx in Aj array
-	GrB_Index l = v->Ap[lo], h = v->Ap[lo + 1], e = h;
+	if (out_l) {
+		*out_l = v->Ap[lo];
+	}
+	if (out_h) {
+		*out_h = v->Ap[lo + 1];
+	}
+	return true;
+}
+
+/**
+ * @brief Searches for `col_idx` within a known column range `[l, h)` of `Aj`.
+ *
+ * @param[in]  v       Pointer to the open `PathsView`.
+ * @param[in]  l       Lower search bound index in `Aj`.
+ * @param[in]  h       Upper search bound index in `Aj`.
+ * @param[in]  col_idx Target column index to locate.
+ * @param[out] out_idx Absolute element offset in `Aj` if found.
+ *
+ * @return `true` if column index was found, `false` otherwise.
+ */
+static inline bool paths_view_find_col_in_range(const PathsView *v, GrB_Index l,
+												GrB_Index h, GrB_Index col_idx,
+												GrB_Index *out_idx) {
+	GrB_Index e = h;
 	// Binary search while range > BINARY_SEARCH_THRESHOLD
-	while (h - l > 8) {
+	while (h - l > BINARY_SEARCH_THRESHOLD) {
 		GrB_Index m = l + (h - l) / 2;
 		if (v->Aj[m] < col_idx) {
 			l = m + 1;
@@ -260,10 +437,29 @@ have_row:
 }
 
 /**
+ * @brief Looks up a column index `col_idx` in row `row_idx`.
+ *
+ * @param[in]  v       Pointer to the open `PathsView`.
+ * @param[in]  row_idx Source row index.
+ * @param[in]  col_idx Target column index.
+ * @param[out] out_idx Absolute element index in HyperCSR values array if found.
+ *
+ * @return `true` if element exists, `false` otherwise.
+ */
+static inline bool paths_view_find_elem(const PathsView *v, GrB_Index row_idx,
+										GrB_Index col_idx, GrB_Index *out_idx) {
+	GrB_Index l, h;
+	if (!paths_view_find_row_range(v, row_idx, &l, &h)) {
+		return false;
+	}
+	return paths_view_find_col_in_range(v, l, h, col_idx, out_idx);
+}
+
+/**
  * @brief Element stored in the explicit DFS extraction stack.
  *
  * Captures a single step in the CFG path reconstruction traversal, representing an
- * entry $(i, j)$ in the matrix of a nonterminal symbol $A$.
+ * entry (i, j) in the matrix of a nonterminal symbol A.
  */
 typedef struct {
 	GrB_Index row_idx;	// Source vertex index (row i)
@@ -357,7 +553,8 @@ static void fill_interleaved_map(int32_t *map, int64_t n, int64_t k,
 }
 
 /**
- * @brief Builds indexed grammar rules lookup array for nonterminals.
+ * @brief Builds indexed grammar rules lookup array for terminal productions (A ->
+ * a).
  *
  * @param[in] g Input grammar pointer.
  *
@@ -430,6 +627,12 @@ oom:
 	return NULL;
 }
 
+/**
+ * @brief Frees resources allocated for a terminal grammar index array.
+ *
+ * @param[in,out] idx            Array of `NontermRules` to free.
+ * @param[in]     nonterms_count Number of nonterminal symbols.
+ */
 static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 	if (!idx) {
 		return;
@@ -441,65 +644,17 @@ static void free_grammar_index(NontermRules *idx, int64_t nonterms_count) {
 }
 
 /**
- * @brief Lazily retrieves or opens the zero-copy HyperCSR `PathsView` for
- * nonterminal `paths[nonterm_idx]`.
- *
- * @param[out] out_view    Output pointer to the opened `PathsView`.
- * @param[in]  fast_paths  Array of views per nonterminal symbol.
- * @param[in]  paths       Array of original GraphBLAS nonterminal matrices.
- * @param[in]  nonterm_idx Index of the nonterminal symbol.
- * @param[in]  n           Total number of vertices in the graph.
- *
- * @return `GrB_SUCCESS` on success, or an error code on failure.
- */
-static inline GrB_Info get_or_open_paths_view(PathsView **out_view,
-											  PathsView *fast_paths,
-											  GrB_Matrix *paths, int32_t nonterm_idx,
-											  GrB_Index n) {
-	if (!fast_paths[nonterm_idx].open) {
-		GrB_Info info =
-			paths_view_open(&fast_paths[nonterm_idx], paths[nonterm_idx], n);
-		if (info != GrB_SUCCESS) {
-			*out_view = NULL;
-			return info;
-		}
-	}
-	*out_view = &fast_paths[nonterm_idx];
-	return GrB_SUCCESS;
-}
-
-/**
- * @brief Binary rule A -> B C without the left-hand side (stored grouped by A).
- */
-typedef struct {
-	int32_t B; // First symbol on the right-hand side
-	int32_t C; // Second symbol on the right-hand side
-} BinRule;
-
-/**
- * @brief CSR-like index of binary rules grouped by the left-hand nonterminal.
- *
- * Rules of nonterminal A are `rules[offset[A] .. offset[A + 1])`.
- */
-typedef struct {
-	BinRule *rules;	 // Binary rules sorted by left-hand nonterminal
-	size_t *offset;	 // nonterms_count + 1 offsets into `rules`
-	size_t nonterms; // Number of nonterminals
-} BinaryIndex;
-
-static void free_binary_index(BinaryIndex *bi) {
-	if (!bi) {
-		return;
-	}
-	free(bi->rules);
-	free(bi->offset);
-	memset(bi, 0, sizeof(*bi));
-}
-
-/**
  * @brief Role-to-nonterminal-id mapping used by grammar patterns.
  *
  * Must stay identical to `pat_role_id` in LAGraph_CFL_AllPaths_adv.
+ *
+ * @param[in] role Pointer to pattern role structure.
+ * @param[in] mask Mask index.
+ * @param[in] qr   Query row state index.
+ * @param[in] qc   Query column state index.
+ * @param[in] i    Offset index within pattern group.
+ *
+ * @return Resolved nonterminal symbol ID.
  */
 static inline int32_t pat_role_id(const LAGraph_Pat_role *role, int64_t mask,
 								  int64_t qr, int64_t qc, int64_t i) {
@@ -523,7 +678,12 @@ typedef struct {
 
 /**
  * @brief Records a concrete rule A -> B C, skipping out-of-range symbols and rules
- * with an empty matrix (such rules could never have produced a middle vertex).
+ * with an empty matrix.
+ *
+ * @param[in,out] c Pointer to emission context (`EmitCtx`).
+ * @param[in]     A Left-hand side nonterminal symbol ID.
+ * @param[in]     B First right-hand side nonterminal symbol ID.
+ * @param[in]     C Second right-hand side nonterminal symbol ID.
  */
 static inline void emit_rule(EmitCtx *c, int32_t A, int32_t B, int32_t C) {
 	size_t n = c->nonterms;
@@ -545,7 +705,11 @@ static inline void emit_rule(EmitCtx *c, int32_t A, int32_t B, int32_t C) {
  * @brief Enumerates all concrete binary rules A -> B C of the grammar.
  *
  * Mirrors the expansion done by LAGraph_CFL_AllPaths_adv: indexed rules are
- * exploded first, then CONV / SCALE / LEFT / RIGHT patterns are unrolled.
+ * exploded first, then CONV / SCALE / LEFT / RIGHT patterns are unrolled into
+ * explicit binary rules.
+ *
+ * @param[in]     g   Input grammar structure pointer.
+ * @param[in,out] ctx Pointer to emission context (`EmitCtx`).
  */
 static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
 	for (int64_t r = 0; r < g->rules_count; r++) {
@@ -576,6 +740,7 @@ static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
 
 			const LAGraph_rule_Pat *pat = bin_rule.pat;
 
+			// Pattern 1: Convolution pattern unrolling
 			if (pat != NULL && pat->kind == LAGraph_PAT_CONV) {
 				int64_t N = pat->masks, R = pat->states, K = pat->idx_count;
 				if (pat->element == LAGraph_PAT_ALL_ELEMENTS) {
@@ -620,6 +785,7 @@ static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
 				continue;
 			}
 
+			// Pattern 2: Scale pattern unrolling
 			if (pat != NULL && pat->kind == LAGraph_PAT_SCALE) {
 				int64_t N = pat->masks, R = pat->states;
 				for (int64_t m = 0; m < N; m++) {
@@ -634,6 +800,7 @@ static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
 				continue;
 			}
 
+			// Pattern 3: Left / Right recursive expansion pattern unrolling
 			if (pat != NULL &&
 				(pat->kind == LAGraph_PAT_LEFT || pat->kind == LAGraph_PAT_RIGHT)) {
 				int64_t N = pat->masks, R = pat->states;
@@ -667,19 +834,38 @@ static void enumerate_binary_rules(const MRGrammar_t *g, EmitCtx *ctx) {
 }
 
 /**
- * @brief Builds the per-nonterminal index of concrete binary rules directly from
- * the grammar (the rule table returned by the AllPaths algorithm is not used).
+ * @brief Comparator function for `qsort` to order binary rules primarily by
+ * right-hand symbol B, and secondarily by C.
  *
- * @param[out] bi   Resulting index (free with free_binary_index).
- * @param[in]  g    Grammar.
+ * @param[in] a Pointer to first `BinRule`.
+ * @param[in] b Pointer to second `BinRule`.
+ *
+ * @return Negative if a < b, positive if a > b, 0 if equal.
+ */
+static int compare_bin_rules_by_B(const void *a, const void *b) {
+	const BinRule *r1 = (const BinRule *)a;
+	const BinRule *r2 = (const BinRule *)b;
+	if (r1->B != r2->B) {
+		return (r1->B < r2->B) ? -1 : 1;
+	}
+	return (r1->C < r2->C) ? -1 : (r1->C > r2->C ? 1 : 0);
+}
+
+/**
+ * @brief Builds the per-nonterminal index of concrete binary rules directly from
+ * the grammar.
+ *
+ * @param[out] bi    Resulting index (free with free_binary_index).
+ * @param[in]  g     Grammar.
  * @param[in]  paths AllPaths matrices, used only to skip rules with empty
- * matrices.
+ *                   matrices.
+ *
+ * @return `GrB_SUCCESS` on success, or an error code on failure.
  */
 static GrB_Info build_binary_index(BinaryIndex *bi, const MRGrammar_t *g,
 								   GrB_Matrix *paths) {
 	size_t nonterms = (size_t)g->nonterms_count;
 	memset(bi, 0, sizeof(*bi));
-	bi->nonterms = nonterms;
 
 	GrB_Index *nnz = calloc(nonterms ? nonterms : 1, sizeof(GrB_Index));
 	size_t *cursor = calloc(nonterms ? nonterms : 1, sizeof(size_t));
@@ -716,14 +902,45 @@ static GrB_Info build_binary_index(BinaryIndex *bi, const MRGrammar_t *g,
 	ctx.fill = true;
 	enumerate_binary_rules(g, &ctx); // fill pass
 
+	for (size_t a = 0; a < nonterms; a++) {
+		size_t start = bi->offset[a];
+		size_t count = bi->offset[a + 1] - start;
+		if (count > 1) {
+			qsort(&bi->rules[start], count, sizeof(BinRule), compare_bin_rules_by_B);
+		}
+	}
+
 	free(nnz);
 	free(cursor);
 	return GrB_SUCCESS;
 }
 
 /**
- * @brief Attempts to push a path derivation step $(i, j)$ for nonterminal $A$
+ * @brief Marks an already located element as visited in the bitset and pushes it
  * onto the DFS stack.
+ *
+ * @param[in,out] st      Pointer to the active stack.
+ * @param[in,out] v       Pointer to the open `PathsView`.
+ * @param[in]     row_idx Source row index.
+ * @param[in]     col_idx Target column index.
+ * @param[in]     nonterm Nonterminal symbol ID.
+ * @param[in]     idx     Element index in values array.
+ *
+ * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` on push failure.
+ */
+static inline GrB_Info claim_and_push(Stack *st, PathsView *v, GrB_Index row_idx,
+									  GrB_Index col_idx, int32_t nonterm,
+									  GrB_Index idx) {
+	if (test_and_set(v->visited, idx)) {
+		return GrB_SUCCESS;
+	}
+	return stack_push(st, row_idx, col_idx, nonterm, idx) ? GrB_SUCCESS
+														  : GrB_OUT_OF_MEMORY;
+}
+
+/**
+ * @brief Attempts to push a path derivation step (i, j) for nonterminal A onto the
+ * DFS stack.
  *
  * Performs element presence lookup in the corresponding `PathsView` and checks
  * if the entry was already visited using the bitset.
@@ -751,39 +968,10 @@ static GrB_Info push_unvisited_path_step(Stack *st, PathsView *fast_paths,
 	if (!paths_view_find_elem(v, row_idx, col_idx, &idx)) {
 		return GrB_SUCCESS;
 	}
-	if (test_and_set(v->visited, idx)) {
-		return GrB_SUCCESS;
-	}
-
-	if (!stack_push(st, row_idx, col_idx, nonterm, idx)) {
-		info = GrB_OUT_OF_MEMORY;
-		goto cleanup;
-	}
-
-	return GrB_SUCCESS;
+	return claim_and_push(st, v, row_idx, col_idx, nonterm, idx);
 
 cleanup:
 	return info;
-}
-
-/**
- * @brief Marks an already located element as visited and pushes it onto the
- * stack.
- *
- * Unlike push_unvisited_path_step, the element must have been found beforehand
- * (so that both halves of a binary split can be validated before pushing
- * either).
- *
- * @return `GrB_SUCCESS` or `GrB_OUT_OF_MEMORY`.
- */
-static inline GrB_Info claim_and_push(Stack *st, PathsView *v, GrB_Index row_idx,
-									  GrB_Index col_idx, int32_t nonterm,
-									  GrB_Index idx) {
-	if (test_and_set(v->visited, idx)) {
-		return GrB_SUCCESS;
-	}
-	return stack_push(st, row_idx, col_idx, nonterm, idx) ? GrB_SUCCESS
-														  : GrB_OUT_OF_MEMORY;
 }
 
 /**
@@ -802,6 +990,7 @@ typedef struct {
 	const NontermRules *grammar_idx; // Index of terminal grammar rules (A -> a)
 	const int32_t *grammar_to_straight; // Interleaved to linear index mapping
 										// table for terminals
+	const RowPresence *row_presence;	// Bitset matrix for fast row presence check
 	MRGrammar_t grammar;				// Context-free grammar definition
 	GrB_Index n;						// Number of vertices in the graph
 } ExtractionContext;
@@ -810,9 +999,9 @@ typedef struct {
  * @brief Drains current stack completely in DFS order to reconstruct derivation
  * trees.
  *
- * Recursively pops derivation elements, splits binary rules $A \to B C$, and
- * records terminal edges into output matrices when terminal derivations $A \to
- * a$ are reached.
+ * Recursively pops derivation elements, splits binary rules A -> B C, and
+ * records terminal edges into output matrices when terminal derivations A -> a
+ * are reached.
  *
  * @param[in,out] ctx Pointer to the active extraction context.
  *
@@ -832,10 +1021,6 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 		AllPathsElem elem = cur_view->iso ? cur_view->Ax[0] : cur_view->Ax[elem_idx];
 
 		const NontermRules *rules = &ctx->grammar_idx[A];
-
-		const BinaryIndex *bi = ctx->bin_index;
-		size_t r_begin = bi->offset[A];
-		size_t r_end = bi->offset[A + 1];
 
 		// Iterate over intermediate vertices
 		for (size_t ki = 0; ki < elem.n; ki++) {
@@ -859,31 +1044,73 @@ static GrB_Info drain_extraction_stack(ExtractionContext *ctx) {
 														   true, i, j));
 					}
 				}
+			}
+		}
+
+		// Binary rules: A -> B C
+
+		const BinaryIndex *bi = ctx->bin_index;
+		size_t r_begin = bi->offset[A];
+		size_t r_end = bi->offset[A + 1];
+
+		const RowPresence *rp = ctx->row_presence;
+		const uint64_t *rb =
+			(rp && rp->bits) ? (rp->bits + (size_t)i * rp->words) : NULL;
+
+		size_t r = r_begin;
+		while (r < r_end) {
+			int32_t current_B = bi->rules[r].B;
+
+			// Find group range of rules having the same left-child symbol B
+			size_t r_b_end = r + 1;
+			while (r_b_end < r_end && bi->rules[r_b_end].B == current_B) {
+				r_b_end++;
+			}
+
+			// O(1) bitset check: Skip symbol B if it has no entries in row i
+			if (rb && !((rb[current_B >> 6] >> (current_B & 63)) & 1)) {
+				r = r_b_end;
 				continue;
 			}
 
-			// Binary split A -> B C via mid. The rule id is not stored in the
-			// element, so every rule of A is tested: it is a valid split iff
-			// both B(i, mid) and C(mid, j) are present.
-			for (size_t r = r_begin; r < r_end; r++) {
-				BinRule br = bi->rules[r];
-				PathsView *vB = NULL, *vC = NULL;
-				GrB_Index idxB, idxC;
+			PathsView *vB = NULL;
+			GRB_TRY(get_or_open_paths_view(&vB, ctx->fast_paths, ctx->paths,
+										   current_B, ctx->n));
 
-				GRB_TRY(get_or_open_paths_view(&vB, ctx->fast_paths, ctx->paths,
-											   br.B, ctx->n));
-				if (!paths_view_find_elem(vB, i, mid, &idxB)) {
-					continue;
-				}
-				GRB_TRY(get_or_open_paths_view(&vC, ctx->fast_paths, ctx->paths,
-											   br.C, ctx->n));
-				if (!paths_view_find_elem(vC, mid, j, &idxC)) {
-					continue;
-				}
+			GrB_Index lB, hB;
+			if (paths_view_find_row_range(vB, i, &lB, &hB)) {
+				for (size_t ki = 0; ki < elem.n; ki++) {
+					GrB_Index mid =
+						(elem.n == 1) ? elem.data.single_elem : elem.data.middle[ki];
+					if (mid == GrB_INDEX_MAX) {
+						continue;
+					}
 
-				GRB_TRY(claim_and_push(ctx->stack, vB, i, mid, br.B, idxB));
-				GRB_TRY(claim_and_push(ctx->stack, vC, mid, j, br.C, idxC));
+					GrB_Index idxB;
+					if (!paths_view_find_col_in_range(vB, lB, hB, mid, &idxB)) {
+						continue;
+					}
+
+					// Symbol B matches at (i, mid_vertex). Check right-child
+					// symbols C at (mid_vertex, j)
+					for (size_t sub_r = r; sub_r < r_b_end; sub_r++) {
+						int32_t current_C = bi->rules[sub_r].C;
+						PathsView *vC = NULL;
+						GrB_Index idxC;
+
+						GRB_TRY(get_or_open_paths_view(
+							&vC, ctx->fast_paths, ctx->paths, current_C, ctx->n));
+						if (paths_view_find_elem(vC, mid, j, &idxC)) {
+							GRB_TRY(claim_and_push(ctx->stack, vB, i, mid, current_B,
+												   idxB));
+							GRB_TRY(claim_and_push(ctx->stack, vC, mid, j, current_C,
+												   idxC));
+						}
+					}
+				}
 			}
+
+			r = r_b_end;
 		}
 	}
 	return GrB_SUCCESS;
@@ -904,6 +1131,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 	Stack stack = stack_new();
 	int32_t *grammar_to_straight = NULL;
 	PathsView *fast_paths = NULL;
+	RowPresence row_presence = {0};
 
 	// Pre-initialize out pointers to NULL for safe cleanup
 	for (int64_t t = 0; t < grammar.terms_count; t++) {
@@ -966,6 +1194,10 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 		goto cleanup;
 	}
 
+	// Build fast O(1) row presence lookup bitset
+	GRB_TRY(init_row_presence(&row_presence, &bin_index, fast_paths, paths,
+							  (size_t)grammar.nonterms_count, n));
+
 	ExtractionContext ctx = {.stack = &stack,
 							 .fast_paths = fast_paths,
 							 .paths = paths,
@@ -974,6 +1206,7 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 							 .bin_index = &bin_index,
 							 .grammar_idx = grammar_idx,
 							 .grammar_to_straight = grammar_to_straight,
+							 .row_presence = &row_presence,
 							 .grammar = grammar,
 							 .n = n};
 
@@ -992,18 +1225,21 @@ GrB_Info extract_edges_from_outputs(GrB_Matrix *out, GrB_Matrix *paths,
 			GrB_Index r = start_view->Ah[rr];
 			for (GrB_Index e = start_view->Ap[rr]; e < start_view->Ap[rr + 1]; e++) {
 				GrB_Index c = start_view->Aj[e];
-				if (r != c) {
-					GRB_TRY(push_unvisited_path_step(&stack, fast_paths, paths, r, c,
-													 NT_START, n));
-					GRB_TRY(drain_extraction_stack(&ctx));
+				if (r == c || test_and_set(start_view->visited, e)) {
+					continue;
 				}
+				if (!stack_push(&stack, r, c, NT_START, e)) {
+					info = GrB_OUT_OF_MEMORY;
+					goto cleanup;
+				}
+				GRB_TRY(drain_extraction_stack(&ctx));
 			}
 		}
 	}
 
 	for (int64_t t = 0; t < grammar.terms_count; t++) {
 		if (out[t]) {
-			GrB_Matrix_wait(out[t], GrB_MATERIALIZE);
+			GRB_TRY(GrB_Matrix_wait(out[t], GrB_MATERIALIZE));
 		}
 	}
 
@@ -1015,6 +1251,7 @@ cleanup:
 			}
 		}
 	}
+	free_row_presence(&row_presence);
 	if (fast_paths) {
 		for (int32_t a = 0; a < grammar.nonterms_count; a++) {
 			GrB_Info close_info = paths_view_close(&fast_paths[a]);

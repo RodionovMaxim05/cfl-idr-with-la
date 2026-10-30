@@ -56,8 +56,8 @@ static GrB_Info dup_matrices_into(GrB_Matrix *dst, GrB_Matrix *src, int64_t coun
 /**
  * @brief Releases intermediate outputs produced during CFL path evaluation.
  *
- * Invokes `LAGraph_CFL_AllPaths_adv_free_outputs` on `paths`, frees `rule_table`,
- * and releases `all_paths_t`.
+ * Invokes `LAGraph_CFL_AllPaths_adv_free_outputs` on `paths`, frees and releases
+ * `all_paths_t`.
  *
  * @param[in,out] paths       Array of output matrices to free. May be `NULL`.
  * @param[in]     count       Number of matrices in `paths`.
