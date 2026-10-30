@@ -848,7 +848,7 @@ static int compare_bin_rules_by_B(const void *a, const void *b) {
 	if (r1->B != r2->B) {
 		return (r1->B < r2->B) ? -1 : 1;
 	}
-	return (r1->C < r2->C) ? -1 : (r1->C > r2->C ? 1 : 0);
+	return (r1->C > r2->C) - (r1->C < r2->C);
 }
 
 /**
