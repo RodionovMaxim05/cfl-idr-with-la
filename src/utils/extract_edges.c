@@ -1001,8 +1001,9 @@ static inline size_t next_live(const BinRule *rules, size_t r, size_t end,
 							   const uint64_t *rb) {
 	for (; r < end; r++) {
 		int32_t B = rules[r].B;
-		if ((rb[B >> 6] >> (B & 63)) & 1)
+		if ((rb[B >> 6] >> (B & 63)) & 1) {
 			return r;
+		}
 	}
 	return end;
 }
