@@ -164,17 +164,6 @@ static GrB_Info refine_mr_with_grammar(GrB_Matrix *result, const IdrGraph *graph
 											  root_candidates));
 
 		for (GrB_Index i = 0; i < n_root_pairs; i++) {
-			if (cache.raw_count > 0) {
-				int memory_status = is_system_memory_critical(ram_budget_percent);
-				if (memory_status == 1 ||
-					(memory_status == -1 &&
-					 cache.raw_count >= DEFAULT_RAW_COUNT_THRESHOLD)) {
-					mr_cache_free(&cache);
-					release_unused_memory_to_os();
-					mr_cache_init(&cache);
-				}
-			}
-
 			GrB_Index src = r_rows[i];
 			GrB_Index tgt = r_cols[i];
 			GrB_Matrix mr_result = NULL;

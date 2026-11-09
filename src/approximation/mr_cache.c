@@ -74,15 +74,11 @@ uint64_t get_graph_cache_hash(const IdrGraph *graph) {
 	return h;
 }
 
-void mr_cache_init(MRCache *c) { memset(c, 0, sizeof(*c)); }
-
-static void free_step_result(MRStepResult *r) {
-	if (!r || !r->matrices) {
+void mr_cache_init(MRCache *c) {
+	if (!c) {
 		return;
 	}
-	LAGraph_CFL_AllPaths_adv_free_outputs(r->matrices, r->count, &r->all_paths_t);
-	GrB_free(&r->all_paths_t);
-	memset(r, 0, sizeof(*r));
+	memset(c, 0, sizeof(*c));
 }
 
 static void free_refined_result(MRRefinedResult *r) {
@@ -107,31 +103,11 @@ void mr_cache_free(MRCache *c) {
 	if (!c) {
 		return;
 	}
-	for (size_t i = 0; i < c->raw_count; i++) {
-		free_step_result(&c->raw[i].value);
+	for (size_t i = 0; i < c->count; i++) {
+		free_refined_result(&c->entries[i].value);
 	}
-	free(c->raw);
-
-	for (size_t i = 0; i < c->refined_count; i++) {
-		free_refined_result(&c->refined[i].value);
-	}
-	free(c->refined);
-
+	free(c->entries);
 	memset(c, 0, sizeof(*c));
-}
-
-const MRStepResult *mr_cache_lookup_raw(const MRCache *c, uint64_t graph_key,
-										uint32_t grammar_tag) {
-	if (!c) {
-		return NULL;
-	}
-	for (size_t i = 0; i < c->raw_count; i++) {
-		const MRRawEntry *e = &c->raw[i];
-		if (e->graph_key == graph_key && e->grammar_tag == grammar_tag) {
-			return &e->value;
-		}
-	}
-	return NULL;
 }
 
 const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_key,
@@ -139,40 +115,13 @@ const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_
 	if (!c) {
 		return NULL;
 	}
-	for (size_t i = 0; i < c->refined_count; i++) {
-		const MRRefinedEntry *e = &c->refined[i];
+	for (size_t i = 0; i < c->count; i++) {
+		const MREntry *e = &c->entries[i];
 		if (e->graph_key == graph_key && e->grammar_tag == grammar_tag) {
 			return &e->value;
 		}
 	}
 	return NULL;
-}
-
-GrB_Info mr_cache_insert_raw(MRCache *c, uint64_t graph_key, uint32_t grammar_tag,
-							 GrB_Matrix *paths_matrices, int64_t symbols_amount,
-							 GrB_Type all_paths_t) {
-	if (!c) {
-		return GrB_SUCCESS;
-	}
-
-	if (c->raw_count == c->raw_cap) {
-		size_t new_cap = c->raw_cap ? c->raw_cap * 2 : 8;
-		MRRawEntry *tmp_buf = realloc(c->raw, new_cap * sizeof(MRRawEntry));
-		if (!tmp_buf) {
-			return GrB_OUT_OF_MEMORY;
-		}
-		c->raw = tmp_buf;
-		c->raw_cap = new_cap;
-	}
-
-	MRRawEntry *e = &c->raw[c->raw_count++];
-	e->graph_key = graph_key;
-	e->grammar_tag = grammar_tag;
-	e->value.matrices = paths_matrices;
-	e->value.count = symbols_amount;
-	e->value.all_paths_t = all_paths_t;
-
-	return GrB_SUCCESS;
 }
 
 GrB_Info mr_cache_insert_refined(MRCache *c, uint64_t graph_key,
@@ -182,18 +131,17 @@ GrB_Info mr_cache_insert_refined(MRCache *c, uint64_t graph_key,
 		return GrB_SUCCESS;
 	}
 
-	if (c->refined_count == c->refined_cap) {
-		size_t new_cap = c->refined_cap ? c->refined_cap * 2 : 8;
-		MRRefinedEntry *tmp_buf =
-			realloc(c->refined, new_cap * sizeof(MRRefinedEntry));
+	if (c->count == c->cap) {
+		size_t new_cap = c->cap ? c->cap * 2 : 8;
+		MREntry *tmp_buf = realloc(c->entries, new_cap * sizeof(MREntry));
 		if (!tmp_buf) {
 			return GrB_OUT_OF_MEMORY;
 		}
-		c->refined = tmp_buf;
-		c->refined_cap = new_cap;
+		c->entries = tmp_buf;
+		c->cap = new_cap;
 	}
 
-	MRRefinedEntry *e = &c->refined[c->refined_count++];
+	MREntry *e = &c->entries[c->count++];
 	e->graph_key = graph_key;
 	e->grammar_tag = grammar_tag;
 	e->value.edges = edges;
