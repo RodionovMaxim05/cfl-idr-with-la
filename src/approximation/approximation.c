@@ -37,8 +37,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
-	GrB_Type all_paths_t = NULL;
-	GrB_Matrix *paths = NULL;
+	GrB_Matrix *edges = NULL;
 	GrB_Matrix *adj_matrices = NULL;
 	GrB_Matrix comp_result = NULL;
 	MRGrammar_t grammar = {0};
@@ -53,24 +52,19 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GRB_TRY(idr_graph_collect_matrices(&adj_matrices, comp, grammar.nonterms_count,
 									   &dummy_modifier, grammar.k));
 
-	paths = (GrB_Matrix *)calloc(grammar.nonterms_count + grammar.terms_count,
-								 sizeof(GrB_Matrix));
-	if (!paths) {
+	size_t symbols_amount = (size_t)(grammar.nonterms_count + grammar.terms_count);
+	edges = (GrB_Matrix *)calloc(symbols_amount, sizeof(GrB_Matrix));
+	if (!edges) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_AllPaths_adv(paths, &all_paths_t, adj_matrices,
-									 grammar.terms_count + grammar.nonterms_count,
-									 grammar.rules, grammar.rules_count, msg,
-									 OPT_EMPTY | OPT_FORMAT | OPT_LAZY | OPT_BLOCK));
-
-	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
-	GRB_TRY(extract_non_trivial_paths(&comp_result, paths[0]));
+	GRB_TRY(LAGraph_CFL_Edges_adv(edges, &comp_result, adj_matrices, symbols_amount,
+								  grammar.rules, grammar.rules_count, NT_START, NULL,
+								  msg, OPT_EMPTY | OPT_BLOCK));
 
 	if (valueflow) {
-		GRB_TRY(apply_valueflow_under_approx(&comp_result, paths, adj_matrices,
-											 grammar, comp));
+		GRB_TRY(apply_valueflow_under_approx(&comp_result, edges, grammar, comp));
 	}
 
 	GrB_Index nnz = 0;
@@ -87,10 +81,13 @@ cleanup:
 		}
 		free((void *)adj_matrices);
 	}
+	if (edges) {
+		for (size_t i = 0; i < symbols_amount; i++) {
+			GrB_free(&edges[i]);
+		}
+		free((void *)edges);
+	}
 	GrB_Matrix_free(&comp_result);
-	LAGraph_CFL_AllPaths_adv_free_outputs(
-		paths, grammar.nonterms_count + grammar.terms_count, &all_paths_t);
-	GrB_free(&all_paths_t);
 	grammar_free(&grammar);
 	return info;
 }

@@ -5,27 +5,15 @@
 #include "internal/grb_utils.h"
 #include "utils/extract_edges.h"
 
-GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths,
-									  GrB_Matrix *adj_matrices, MRGrammar_t grammar,
-									  const IdrGraph *comp) {
+GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *edges,
+									  MRGrammar_t grammar, const IdrGraph *comp) {
 	GrB_Info info = GrB_SUCCESS;
-	GrB_Matrix *out_edges = NULL;
 	IdrGraph updated_graph = {0};
 	GrB_Matrix filtered = NULL;
 
-	out_edges = (GrB_Matrix *)malloc(grammar.terms_count * sizeof(GrB_Matrix));
-	if (!out_edges) {
-		info = GrB_OUT_OF_MEMORY;
-		goto cleanup;
-	}
-
-	MRGrammarConfig dummy_config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
-	GRB_TRY(extract_edges_from_outputs(out_edges, paths, adj_matrices, grammar,
-									   comp->n, comp->n_par, comp->n_bra,
-									   &dummy_config, NULL));
-
-	GRB_TRY(build_idr_graph(&updated_graph, out_edges, comp->n_par, comp->n_bra,
-							comp->normal != NULL, comp->n, false));
+	GRB_TRY(build_idr_graph(&updated_graph, &edges[grammar.nonterms_count],
+							comp->n_par, comp->n_bra, comp->normal != NULL, comp->n,
+							false));
 
 	GRB_TRY(filter_bracket_paths(&filtered, &updated_graph, *comp_result));
 
@@ -34,7 +22,6 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths
 	filtered = NULL;
 
 cleanup:
-	free((void *)out_edges);
 	idr_graph_free(&updated_graph);
 	return info;
 }

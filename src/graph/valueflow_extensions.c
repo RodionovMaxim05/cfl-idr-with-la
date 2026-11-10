@@ -187,6 +187,11 @@ GrB_Info filter_bracket_paths(GrB_Matrix *out, const IdrGraph *graph,
 
 	// For each bracket ID, we check the condition: Open_i * R_node * Close_i
 	for (int64_t i = 0; i < graph->n_bra; i++) {
+		if (!graph->open_bra || !graph->close_bra || !graph->open_bra[i] ||
+			!graph->close_bra[i]) {
+			continue;
+		}
+
 		open_reach = NULL;
 		open_close_reach = NULL;
 

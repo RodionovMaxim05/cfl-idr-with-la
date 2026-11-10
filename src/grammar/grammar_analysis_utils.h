@@ -197,3 +197,25 @@ int64_t MR_grammar_get_group_size(const MRGrammarConfig *config, int64_t b,
 void MR_grammar_get_bracket_layout(const MRGrammarConfig *config, int64_t i,
 								   int64_t n, int64_t k, int64_t *out_group,
 								   int64_t *out_sub_idx);
+
+/**
+ * @brief Constructs a mapping array from grammar terminal indices to straight graph
+ * indices.
+ *
+ * Allocates and initializes an array that translates terminal indices from the
+ * interleaved grammar layout (determined by `MR_GRAMMAR_ALPHA` or `MR_GRAMMAR_BETA`)
+ * to the linear straight-index layout used by `IdrGraph`.
+ *
+ * @param[in] config       Pointer to the grammar configuration.
+ * @param[in] terms_count  Total number of terminal symbols in the grammar.
+ * @param[in] n_par        Number of parenthesis pairs.
+ * @param[in] n_bra        Number of bracket pairs.
+ * @param[in] k            Number of interleaving groups.
+ *
+ * @return allocated mapping array of size `terms_count`, or `NULL` on
+ * allocation failure. Caller takes ownership of the returned array and must free it
+ * via `free()`.
+ */
+int32_t *build_grammar_to_straight_map(const MRGrammarConfig *config,
+									   int64_t terms_count, int64_t n_par,
+									   int64_t n_bra, int64_t k);

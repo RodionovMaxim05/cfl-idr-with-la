@@ -126,3 +126,75 @@ void MR_grammar_get_bracket_layout(const MRGrammarConfig *config, int64_t i,
 	*out_group = g;
 	*out_sub_idx = j;
 }
+
+/**
+ * @brief Fills the interleaved mapping table for grammar terminals to standard
+ * terminal order.
+ *
+ * @param[out] map         Output mapping array.
+ * @param[in]  n           Number of symbols.
+ * @param[in]  k           Interleaving factor/k-parameter.
+ * @param[in]  start_idx   Offset index in output map.
+ * @param[in]  out_base    Base output index.
+ * @param[in]  config      Grammar configuration.
+ */
+static void fill_interleaved_map(int32_t *map, int64_t n, int64_t k,
+								 int32_t start_idx, int32_t out_base,
+								 const MRGrammarConfig *config) {
+	int32_t open_group_base[65] = {0};
+	int32_t close_group_base[65] = {0};
+	int32_t t_idx = start_idx;
+
+	for (int64_t b = 0; b <= k; b++) {
+		open_group_base[b] = t_idx;
+		t_idx += (int32_t)MR_grammar_get_group_size(config, b, n, k);
+	}
+	for (int64_t b = 0; b <= k; b++) {
+		close_group_base[b] = t_idx;
+		t_idx += (int32_t)MR_grammar_get_group_size(config, b, n, k);
+	}
+
+	for (int64_t i = 0; i < n; i++) {
+		int64_t b, j;
+		MR_grammar_get_bracket_layout(config, i, n, k, &b, &j);
+
+		map[open_group_base[b] + j] = out_base + (int32_t)i;
+		map[close_group_base[b] + j] = out_base + (int32_t)n + (int32_t)i;
+	}
+}
+
+int32_t *build_grammar_to_straight_map(const MRGrammarConfig *config,
+									   int64_t terms_count, int64_t n_par,
+									   int64_t n_bra, int64_t k) {
+	int32_t *map = (int32_t *)malloc((size_t)terms_count * sizeof(int32_t));
+	if (!map) {
+		return NULL;
+	}
+
+	switch (config->kind) {
+		case MR_GRAMMAR_ALPHA: {
+			for (int64_t i = 0; i < n_par; i++) {
+				map[i] = (int32_t)i;
+				map[n_par + i] = (int32_t)(n_par + i);
+			}
+			fill_interleaved_map(map, n_bra, k, 2 * (int32_t)n_par,
+								 2 * (int32_t)n_par, config);
+			break;
+		}
+		case MR_GRAMMAR_BETA: {
+			fill_interleaved_map(map, n_par, k, 0, 0, config);
+
+			int32_t bra_base = 2 * (int32_t)n_par;
+			for (int64_t i = 0; i < n_bra; i++) {
+				map[bra_base + i] = bra_base + (int32_t)i;
+				map[bra_base + (int32_t)n_bra + i] =
+					bra_base + (int32_t)n_bra + (int32_t)i;
+			}
+			break;
+		}
+	}
+	if (terms_count > 2 * n_par + 2 * n_bra) {
+		map[2 * n_par + 2 * n_bra] = (int32_t)(2 * n_par + 2 * n_bra);
+	}
+	return map;
+}

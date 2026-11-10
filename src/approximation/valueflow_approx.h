@@ -12,30 +12,27 @@
  * consistency rules required for value-flow analysis.
  *
  * The refinement pipeline:
- * 1. Extracts terminal-labeled edges from CFL-reachability outputs via
- *    `extract_edges_from_outputs`.
- * 2. Reconstructs an `IdrGraph` from the extracted edges.
- * 3. Applies `filter_bracket_paths` to remove paths inconsistent with value-flow
+ * 1. Reconstructs an `IdrGraph` from the mapped terminal edges.
+ * 2. Applies `filter_bracket_paths` to remove paths inconsistent with value-flow
  *    semantics.
- * 4. Replaces the input `comp_result` with the filtered matrix.
+ * 3. Replaces the input `comp_result` with the filtered matrix.
  *
  * @param[in,out] comp_result  On entry: under-approximation matrix to refine.
  *                             On exit: replaced with the filtered result.
  *                             Must not be `NULL`; ownership of the matrix is
  *                             transferred (old value is freed internally).
- * @param[in]     paths        Array of CFL-reachability output matrices (one per
- *                             grammar nonterminal). Must have at least
- *                             `grammar.nonterms_count` elements.
- * @param[in]     adj_matrices Input adjacency matrices for edge extraction.
+ * @param[in,out] edges        Array of CFL symbol output matrices (nonterminals
+ *                             followed by terminals). Terminal matrices starting at
+ *                             `grammar.nonterms_count` are borrowed for graph
+ *                             construction.
  * @param[in]     grammar      Grammar specification used in the CFL analysis.
  * @param[in]     comp         Component graph being analyzed. Used for metadata
  *                             (parenthesis/bracket counts, vertex count).
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */
-GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *paths,
-									  GrB_Matrix *adj_matrices, MRGrammar_t grammar,
-									  const IdrGraph *comp);
+GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *edges,
+									  MRGrammar_t grammar, const IdrGraph *comp);
 
 /**
  * @brief Applies value-flow specific constraints to an over-approximation result.
