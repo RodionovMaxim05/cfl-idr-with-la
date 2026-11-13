@@ -11,6 +11,7 @@ Checks: >
   -readability-math-missing-parentheses,
   -bugprone-easily-swappable-parameters,
   -readability-function-cognitive-complexity,
+  -readability-use-concise-preprocessor-directives,
 
 WarningsAsErrors: '*'
 
