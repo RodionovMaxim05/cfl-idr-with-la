@@ -21,33 +21,63 @@ typedef enum {
 } GrammarTag;
 
 /**
- * @brief Refined edge matrices and reachability matrix resulting from a CFL step.
+ * @brief Per-symbol CFL-reachability matrices produced by
+ * `LAGraph_CFL_reachability_adv`.
  *
- * Stores extracted terminal edge matrices and precomputed boolean reachability
- * matrix.
+ * Holds the reachability matrices for all grammar symbols (nonterminals and
+ * terminals), allowing repeated edge extraction queries for different target
+ * vertex pairs without recomputing reachability.
  */
 typedef struct {
-	GrB_Matrix *edges;		 // Array of `edges_count` boolean edge matrices
-	int64_t edges_count;	 // Number of edge matrices
-	GrB_Matrix reachability; // Precomputed reachability matrix
-} MRRefinedResult;
+	GrB_Matrix
+		*matrices; // Array of `count` reachability matrices, one per grammar symbol
+	int64_t count; // Number of symbols (length of `matrices`)
+} MRReachabilityResult;
 
 /**
- * @brief Cache entry storing refined terminal edges and reachability.
+ * @brief Extracted terminal edge matrices and start-symbol reachability matrix.
+ *
+ * Stores the final extracted terminal edge matrices (mapped to straight indices)
+ * and the non-trivial boolean reachability matrix of the start nonterminal for
+ * full-graph extraction.
  */
 typedef struct {
-	uint64_t graph_key;	   // Hash identifying the input graph structure
-	uint32_t grammar_tag;  // Grammar variant tag (see `GrammarTag`)
-	MRRefinedResult value; // Cached refined edges result
-} MREntry;
+	GrB_Matrix *edges;	 // Array of `edges_count` boolean edge matrices
+	int64_t edges_count; // Number of edge matrices
+	GrB_Matrix
+		reachability; // Non-trivial reachability matrix of the start nonterminal
+} MRExtractedResult;
 
 /**
- * @brief Cache storing refined edge results per (graph_key, grammar_tag).
+ * @brief Cache entry for per-symbol CFL-reachability results.
  */
 typedef struct {
-	MREntry *entries; // Array of cached entries
-	size_t count;	  // Number of active entries
-	size_t cap;		  // Allocated capacity for entries
+	uint64_t graph_key;			// Hash identifying the input graph structure
+	uint32_t grammar_tag;		// Grammar variant tag (see `GrammarTag`)
+	MRReachabilityResult value; // Cached per-symbol reachability matrices
+} MRReachabilityEntry;
+
+/**
+ * @brief Cache entry for full-graph extracted terminal edges and reachability.
+ */
+typedef struct {
+	uint64_t graph_key;		 // Hash identifying the input graph structure
+	uint32_t grammar_tag;	 // Grammar variant tag (see `GrammarTag`)
+	MRExtractedResult value; // Cached extracted edges and reachability result
+} MRExtractedEntry;
+
+/**
+ * @brief Two-level cache storing per-symbol CFL reachability and full extracted
+ * edges.
+ */
+typedef struct {
+	MRReachabilityEntry *reachability; // Array of per-symbol reachability entries
+	size_t reachability_count;		   // Number of active reachability entries
+	size_t reachability_cap;		   // Allocated capacity for reachability entries
+
+	MRExtractedEntry *extracted; // Array of full extracted edge entries
+	size_t extracted_count;		 // Number of active extracted entries
+	size_t extracted_cap;		 // Allocated capacity for extracted entries
 } MRCache;
 
 /**
@@ -76,44 +106,93 @@ void mr_cache_init(MRCache *c);
 /**
  * @brief Releases all resources owned by an `MRCache`.
  *
- * For each cached entry, frees all boolean edge matrices and the reachability
- * matrix via `GrB_free`, frees internal arrays, and resets the cache to zero.
+ * For each cached reachability entry:
+ * - Frees all symbol reachability matrices via `GrB_free` and releases the array.
+ *
+ * For each cached extracted entry:
+ * - Frees all terminal edge matrices and the start-symbol reachability matrix
+ *   via `GrB_free`, and releases the `edges` array.
+ *
+ * Finally, frees internal entry arrays and resets the cache to zero.
  *
  * @param[in,out] c Cache to free. May be `NULL` (no-op).
  */
 void mr_cache_free(MRCache *c);
 
 /**
- * @brief Looks up a cached refined edges and reachability result.
+ * @brief Looks up cached per-symbol CFL-reachability matrices.
  *
- * Performs a linear scan over entries matching both `graph_key` and `grammar_tag`.
+ * Performs a linear scan over reachability entries matching both `graph_key`
+ * and `grammar_tag`.
  *
  * @param[in] c           Cache to search. May be `NULL`.
  * @param[in] graph_key   Hash of the input graph (from `get_graph_cache_hash`).
  * @param[in] grammar_tag Grammar variant tag (see `GrammarTag`).
  *
- * @return Pointer to `const MRRefinedResult`, or `NULL` if not found.
+ * @return Pointer to `const MRReachabilityResult`, or `NULL` if not found.
  *
  * @note The returned pointer remains valid until the cache is modified or freed.
  */
-const MRRefinedResult *mr_cache_lookup_refined(const MRCache *c, uint64_t graph_key,
-											   uint32_t grammar_tag);
+const MRReachabilityResult *mr_cache_lookup_reachability(const MRCache *c,
+														 uint64_t graph_key,
+														 uint32_t grammar_tag);
 
 /**
- * @brief Inserts a refined edges result and reachability matrix into the cache.
+ * @brief Looks up a cached full-graph extracted edges and reachability result.
  *
- * Takes ownership of `edges` array (and contained matrices) and `reachability`.
- * Dynamically resizes the internal entry array when capacity is exceeded.
+ * Performs a linear scan over extracted entries matching both `graph_key`
+ * and `grammar_tag`.
+ *
+ * @param[in] c           Cache to search. May be `NULL`.
+ * @param[in] graph_key   Hash of the input graph (from `get_graph_cache_hash`).
+ * @param[in] grammar_tag Grammar variant tag (see `GrammarTag`).
+ *
+ * @return Pointer to `const MRExtractedResult`, or `NULL` if not found.
+ *
+ * @note The returned pointer remains valid until the cache is modified or freed.
+ */
+const MRExtractedResult *mr_cache_lookup_extracted(const MRCache *c,
+												   uint64_t graph_key,
+												   uint32_t grammar_tag);
+
+/**
+ * @brief Inserts per-symbol CFL-reachability matrices into the cache.
+ *
+ * Takes ownership of `reachability_matrices` and all matrices contained within it.
+ * Dynamically resizes the `reachability` entry array when capacity is exceeded.
+ *
+ * @param[in,out] c                     Cache to insert into. May be `NULL` (no-op).
+ * @param[in]     graph_key             Hash of the input graph.
+ * @param[in]     grammar_tag           Grammar variant tag.
+ * @param[in]     reachability_matrices Array of per-symbol reachability matrices.
+ * @param[in]     symbols_amount        Number of symbols in `reachability_matrices`.
+ *
+ * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` if reallocation fails.
+ *
+ * @note On `GrB_SUCCESS`, the caller must not free `reachability_matrices`; it will
+ *       be freed automatically when `mr_cache_free` is called.
+ */
+GrB_Info mr_cache_insert_reachability(MRCache *c, uint64_t graph_key,
+									  uint32_t grammar_tag,
+									  GrB_Matrix *reachability_matrices,
+									  int64_t symbols_amount);
+
+/**
+ * @brief Inserts extracted terminal edge matrices and reachability matrix into the
+ * cache.
+ *
+ * Takes ownership of the `edges` array (and contained matrices) and `reachability`.
+ * Dynamically resizes the `extracted` entry array when capacity is exceeded.
  *
  * @param[in,out] c            Cache instance. May be `NULL` (no-op).
  * @param[in]     graph_key    Hash of the input graph.
  * @param[in]     grammar_tag  Grammar variant tag.
  * @param[in]     edges        Array of extracted terminal edge matrices.
  * @param[in]     edges_count  Number of edge matrices in `edges`.
- * @param[in]     reachability Reachability matrix.
+ * @param[in]     reachability Start-symbol reachability matrix.
  *
  * @return `GrB_SUCCESS` on success, or `GrB_OUT_OF_MEMORY` on allocation failure.
  */
-GrB_Info mr_cache_insert_refined(MRCache *c, uint64_t graph_key,
-								 uint32_t grammar_tag, GrB_Matrix *edges,
-								 int64_t edges_count, GrB_Matrix reachability);
+GrB_Info mr_cache_insert_extracted(MRCache *c, uint64_t graph_key,
+								   uint32_t grammar_tag, GrB_Matrix *edges,
+								   int64_t edges_count, GrB_Matrix reachability);

@@ -5,11 +5,27 @@
 #include "internal/grb_utils.h"
 #include "utils/extract_edges.h"
 
-GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *edges,
-									  MRGrammar_t grammar, const IdrGraph *comp) {
+GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result,
+									  GrB_Matrix *reach_matrices,
+									  GrB_Matrix *adj_matrices, MRGrammar_t grammar,
+									  const IdrGraph *comp) {
 	GrB_Info info = GrB_SUCCESS;
+	char msg[LAGRAPH_MSG_LEN];
+	GrB_Matrix *edges = NULL;
 	IdrGraph updated_graph = {0};
 	GrB_Matrix filtered = NULL;
+
+	size_t symbols_amount = (size_t)(grammar.terms_count + grammar.nonterms_count);
+
+	edges = (GrB_Matrix *)malloc(symbols_amount * sizeof(GrB_Matrix));
+	if (!edges) {
+		info = GrB_OUT_OF_MEMORY;
+		goto cleanup;
+	}
+
+	GRB_TRY(LAGraph_CFL_extract_edges(edges, reach_matrices, adj_matrices,
+									  symbols_amount, grammar.rules,
+									  grammar.rules_count, NT_START, NULL, msg));
 
 	GRB_TRY(build_idr_graph(&updated_graph, &edges[grammar.nonterms_count],
 							comp->n_par, comp->n_bra, comp->normal != NULL, comp->n,
@@ -22,6 +38,7 @@ GrB_Info apply_valueflow_under_approx(GrB_Matrix *comp_result, GrB_Matrix *edges
 	filtered = NULL;
 
 cleanup:
+	free((void *)edges);
 	idr_graph_free(&updated_graph);
 	return info;
 }

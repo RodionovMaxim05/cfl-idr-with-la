@@ -8,17 +8,30 @@
 #include "utils/extract_edges.h"
 
 /**
- * @brief Executes a single CFL-reachability computation step with caching
+ * @brief Executes a single CFL-reachability and edge-extraction step with caching
  * support.
  *
- * This function orchestrates one phase of the mutual-refinement algorithm:
- * 1. Computes a cache key via `get_graph_cache_hash`.
- * 2. Checks the cache for a precomputed result matching `(graph_key,
- * grammar_tag)`.
- * 3. If cached: extracts edges and reachability from stored results.
- * 4. If not cached: invokes `LAGraph_CFL_AllPaths`, extracts results, and
- * inserts them into the cache via `mr_cache_insert`.
- * 5. Optionally checks for the presence of a target path.
+ * Orchestrates one phase of the mutual-refinement algorithm using composite
+ * cache keys `(graph_key, grammar_tag)` computed via `get_graph_cache_hash`:
+ * - **Full-graph extraction mode (`target_path == NULL`)**:
+ *   1. Checks the `extracted` cache via `mr_cache_lookup_extracted`; on a hit,
+ *      duplicates the cached terminal edge matrices and non-trivial start-symbol
+ *      reachability matrix.
+ *   2. On a miss, computes per-symbol reachability via
+ *      `LAGraph_CFL_reachability_adv`, extracts witness terminal edges across
+ *      the entire graph via `LAGraph_CFL_extract_edges`, filters non-trivial
+ *      start-symbol paths via `extract_non_trivial_paths`, and stores the
+ *      results via `mr_cache_insert_extracted`.
+ * - **Targeted pair mode (`target_path != NULL`)**:
+ *   1. Checks the `reachability` cache via `mr_cache_lookup_reachability`; on a
+ *      miss, computes per-symbol reachability via `LAGraph_CFL_reachability_adv`
+ *      and caches the resulting matrix array via `mr_cache_insert_reachability`.
+ *   2. Verifies whether `target_path` is reachable under the start nonterminal
+ *      and sets `*target_found`.
+ *   3. If reachable, extracts witness terminal edges restricted to
+ *      `target_path` via `LAGraph_CFL_extract_edges` and outputs a single-entry
+ *      reachability matrix; otherwise, sets `*out_reachability` and `*out_edges`
+ *      entries to `NULL`.
  *
  * @param[in]  graph             Input graph for CFL analysis.
  * @param[in]  grammar           Grammar specification (rules, nonterminals,

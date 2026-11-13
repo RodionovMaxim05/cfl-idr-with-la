@@ -10,11 +10,11 @@
  * Filters the input `paths` matrix to produce a boolean reachability matrix
  * containing only pairs `(i, j)` where `i ≠ j`.
  *
- * @param[out] out     Output matrix (`GrB_BOOL`, n × n) to populate with non-trivial
- *                     reachability pairs. Must be pre-allocated by the caller with
- *                     the same dimensions as `paths`.
- * @param[in]  paths   Input CFL-reachability result matrix (`AllPathsElem` UDT type)
- *                     from `LAGraph_CFL_AllPaths`. Must not be `NULL`.
+ * @param[out] out    Pointer to the output matrix (`GrB_BOOL`, n × n) to populate
+ *                    with non-trivial reachability pairs. `*out` must be
+ *                    pre-allocated to match the dimensions of `paths`.
+ * @param[in]  paths  Input CFL-reachability result matrix (`GrB_BOOL`, n × n)
+ *                    produced by `LAGraph_CFL_reachability_adv`. Must not be `NULL`.
  *
  * @return `GrB_SUCCESS` on success, or a GraphBLAS error code on failure.
  */

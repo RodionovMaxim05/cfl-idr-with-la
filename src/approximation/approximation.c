@@ -37,7 +37,7 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 	GrB_Info info = GrB_SUCCESS;
 	char msg[LAGRAPH_MSG_LEN];
 
-	GrB_Matrix *edges = NULL;
+	GrB_Matrix *reach_matrices = NULL;
 	GrB_Matrix *adj_matrices = NULL;
 	GrB_Matrix comp_result = NULL;
 	MRGrammar_t grammar = {0};
@@ -53,18 +53,23 @@ static GrB_Info process_under_approx_component(GrB_Matrix result, IdrGraph *comp
 									   &dummy_modifier, grammar.k));
 
 	size_t symbols_amount = (size_t)(grammar.nonterms_count + grammar.terms_count);
-	edges = (GrB_Matrix *)calloc(symbols_amount, sizeof(GrB_Matrix));
-	if (!edges) {
+
+	reach_matrices = (GrB_Matrix *)calloc(symbols_amount, sizeof(GrB_Matrix));
+	if (!reach_matrices) {
 		info = GrB_OUT_OF_MEMORY;
 		goto cleanup;
 	}
 
-	GRB_TRY(LAGraph_CFL_Edges_adv(edges, &comp_result, adj_matrices, symbols_amount,
-								  grammar.rules, grammar.rules_count, NT_START, NULL,
-								  msg, OPT_EMPTY | OPT_BLOCK));
+	GRB_TRY(LAGraph_CFL_reachability_adv(
+		reach_matrices, adj_matrices, symbols_amount, grammar.rules,
+		grammar.rules_count, msg, OPT_EMPTY | OPT_BLOCK));
+
+	GRB_TRY(GrB_Matrix_new(&comp_result, GrB_BOOL, comp->n, comp->n));
+	GRB_TRY(extract_non_trivial_paths(&comp_result, reach_matrices[NT_START]));
 
 	if (valueflow) {
-		GRB_TRY(apply_valueflow_under_approx(&comp_result, edges, grammar, comp));
+		GRB_TRY(apply_valueflow_under_approx(&comp_result, reach_matrices,
+											 adj_matrices, grammar, comp));
 	}
 
 	GrB_Index nnz = 0;
@@ -81,11 +86,11 @@ cleanup:
 		}
 		free((void *)adj_matrices);
 	}
-	if (edges) {
+	if (reach_matrices) {
 		for (size_t i = 0; i < symbols_amount; i++) {
-			GrB_free(&edges[i]);
+			GrB_free(&reach_matrices[i]);
 		}
-		free((void *)edges);
+		free((void *)reach_matrices);
 	}
 	GrB_Matrix_free(&comp_result);
 	grammar_free(&grammar);
