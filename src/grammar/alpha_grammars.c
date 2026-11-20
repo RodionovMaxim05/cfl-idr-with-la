@@ -1,7 +1,8 @@
 #include "grammar.h"
 
 /**
- * S -> `(_i` S `)_i` S | `[_i` S | `]_i` S | `normal` S | eps in WCNF :
+ * S -> `)_i` S `(_i` S | `(_i` S `)_i` S | `[_i` S | `]_i` S | `normal` S | eps in
+ * WCNF :
  *
  * S -> eps
  * S -> N S
@@ -10,6 +11,9 @@
  * S -> A_i E_i
  * E_i -> S G_i
  * G_i -> B_i S
+ * S -> B_i H_i
+ * H_i -> S J_i
+ * J_i -> A_i S
  * A_i -> `(_i`
  * B_i -> `)_i`
  *
@@ -19,7 +23,7 @@
  * D_i -> `]_i`
  */
 MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
-	int64_t nonterms_count = 1 + 4 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
+	int64_t nonterms_count = 1 + 6 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 
 	int64_t rules_count = 1;
@@ -27,7 +31,7 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 		rules_count += 2;
 	}
 	if (n_par > 0) {
-		rules_count += 5;
+		rules_count += 8;
 	}
 	if (n_bra > 0) {
 		rules_count += 4;
@@ -55,6 +59,10 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	int32_t E_0 = (n_par > 0) ? offset : -1;
 	offset += (int32_t)n_par;
 	int32_t G_0 = (n_par > 0) ? offset : -1;
+	offset += (int32_t)n_par;
+	int32_t H_0 = (n_par > 0) ? offset : -1;
+	offset += (int32_t)n_par;
+	int32_t J_0 = (n_par > 0) ? offset : -1;
 	offset += (int32_t)n_par;
 
 	// Blocks for brackets
@@ -105,6 +113,18 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 											  LAGraph_EWNCF_INDEX_PROD_B};
 		// G_i -> B_i S
 		rules[r++] = (LAGraph_rule_EWCNF){G_0, B_0, NT_START, count,
+										  LAGraph_EWNCF_INDEX_NONTERM |
+											  LAGraph_EWNCF_INDEX_PROD_A};
+		// S -> B_i H_i
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, B_0, H_0, count,
+										  LAGraph_EWNCF_INDEX_PROD_A |
+											  LAGraph_EWNCF_INDEX_PROD_B};
+		// H_i -> S J_i
+		rules[r++] = (LAGraph_rule_EWCNF){H_0, NT_START, J_0, count,
+										  LAGraph_EWNCF_INDEX_NONTERM |
+											  LAGraph_EWNCF_INDEX_PROD_B};
+		// J_i -> A_i S
+		rules[r++] = (LAGraph_rule_EWCNF){J_0, A_0, NT_START, count,
 										  LAGraph_EWNCF_INDEX_NONTERM |
 											  LAGraph_EWNCF_INDEX_PROD_A};
 		// A_i -> `(_i`
