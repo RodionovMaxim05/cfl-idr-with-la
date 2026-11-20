@@ -9,6 +9,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 /**
  * @brief Sparse-matrix representation of a Dyck-reachability graph.
  *
@@ -147,3 +151,7 @@ GrB_Info idr_remove_valueflow_unreachable(IdrGraph *out, const IdrGraph *graph);
 GrB_Info idr_get_on_demand(GrB_Matrix *result, const IdrGraph *graph,
 						   GrB_Matrix under_approx, GrB_Matrix over_approx,
 						   bool parity_d, bool valueflow, bool filter_empty);
+
+#if defined(__cplusplus)
+}
+#endif
