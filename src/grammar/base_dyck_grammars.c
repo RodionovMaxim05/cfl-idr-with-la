@@ -146,8 +146,8 @@ MRGrammar_t dyck_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 }
 
 MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
-	// Nonterminals: S, E, G, AnyOpen, AnyClose, [N]
-	int64_t nonterms_count = 5 + (has_normal ? 1 : 0);
+	// Nonterminals: S, E, G, H, J, AnyOpen, AnyClose, [N]
+	int64_t nonterms_count = 7 + (has_normal ? 1 : 0);
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 
 	// Rules:
@@ -156,9 +156,12 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 	// S -> AnyOpen E:                   1
 	// E -> S G:                         1
 	// G -> AnyClose S:                  1
+	// S -> AnyClose H:                  1
+	// H -> S J:                         1
+	// J -> AnyOpen S:                   1
 	// AnyOpen  -> open_i  (par + bra):  2
 	// AnyClose -> close_j (par + bra):  2
-	int64_t rules_count = 4 + (has_normal ? 2 : 0);
+	int64_t rules_count = 7 + (has_normal ? 2 : 0);
 	if (n_par > 0) {
 		rules_count += 2;
 	}
@@ -180,9 +183,11 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 
 	int32_t NT_E = 1;
 	int32_t NT_G = 2;
-	int32_t NT_ANY_OPEN = 3;
-	int32_t NT_ANY_CLOSE = 4;
-	int32_t NT_N = 5; // if has_normal
+	int32_t NT_H = 3;
+	int32_t NT_J = 4;
+	int32_t NT_ANY_OPEN = 5;
+	int32_t NT_ANY_CLOSE = 6;
+	int32_t NT_N = 7; // if has_normal
 
 	// Terminal offset
 
@@ -207,12 +212,15 @@ MRGrammar_t dyck_project_grammar(int64_t n_par, int64_t n_bra, bool has_normal) 
 		rules[r++] = (LAGraph_rule_EWCNF){NT_N, TERM(t_normal_idx), -1, 0, 0};
 	}
 
-	// S -> AnyOpen E
+	// S -> AnyOpen S AnyClose S
 	rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_ANY_OPEN, NT_E, 0, 0};
-	// E -> S G
 	rules[r++] = (LAGraph_rule_EWCNF){NT_E, NT_START, NT_G, 0, 0};
-	// G -> AnyClose S
 	rules[r++] = (LAGraph_rule_EWCNF){NT_G, NT_ANY_CLOSE, NT_START, 0, 0};
+
+	// S -> AnyClose S AnyOpen S
+	rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_ANY_CLOSE, NT_H, 0, 0};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_H, NT_START, NT_J, 0, 0};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_J, NT_ANY_OPEN, NT_START, 0, 0};
 
 	// Rules for terminals
 
