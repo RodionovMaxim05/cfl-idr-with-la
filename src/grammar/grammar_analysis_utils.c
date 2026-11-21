@@ -41,10 +41,12 @@ MRGrammar_t get_beta_grammar(IdrGrammarType grammar_type, int64_t n_par,
 		case IDR_EXCLUDE:
 			return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 1);
 		case IDR_PARITY2:
-			return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 2);
 		case IDR_SE:
 		case IDR_ALL:
-			return dyck_beta_grammar_k_parity_se(n_par, n_bra, has_normal, 2);
+			return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 2);
+		// case IDR_SE:
+		// case IDR_ALL:
+		// 	return dyck_beta_grammar_k_parity_se(n_par, n_bra, has_normal, 2);
 		default:
 			return dyck_beta_grammar(n_par, n_bra, has_normal);
 	}
