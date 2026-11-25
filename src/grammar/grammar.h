@@ -268,3 +268,24 @@ MRGrammar_t dyck_beta_grammar_k_parity(int64_t n_par, int64_t n_bra, bool has_no
  */
 MRGrammar_t dyck_beta_grammar_k_parity_se(int64_t n_par, int64_t n_bra,
 										  bool has_normal, int64_t k);
+
+/**
+ * Creates an Beta grammar with k-parity conditions and label exclusion.
+ *
+ * Corresponds to the grammar used in the **PARErase** method (Sect. 4.2).
+ *
+ * This grammar extends [dyckBetaGrammarKParity] by excluding a specific parenthesis
+ * label from parity tracking. The excluded label does not affect parity states.
+ *
+ * @param[in] n_par       Number of parenthesis types (pairs of `(`/`)`).
+ * @param[in] n_bra       Number of bracket types (pairs of `[`/`]`).
+ * @param[in] has_normal  Whether to include an epsilon/unlabeled edge terminal.
+ * @param[in] ex_par      Index of the parenthesis type to exclude from parity
+ *                        tracking (0 ≤ ex_par < n_par).
+ *
+ * @return A fully initialized Beta `MRGrammar_t` with parity tracking and
+ *         label exclusion, or a zeroed struct on allocation failure.
+ */
+MRGrammar_t dyck_beta_grammar_k_parity_exclude(int64_t n_par, int64_t n_bra,
+											   bool has_normal, int64_t k,
+											   int64_t ex_par);
