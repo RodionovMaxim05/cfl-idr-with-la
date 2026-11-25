@@ -1,36 +1,40 @@
 #include "grammar.h"
 
 /**
- * S -> `(_i` S `)_i` S | `[_i` S | `]_i` S | `normal` S | eps in WCNF :
+ * Start: S
  *
- * S -> eps
- * S -> N S
+ * Basic balanced language:
+ * B -> eps | N B | A_i B | B_i B | C_i F_i
+ * F_i -> B H_i
+ * H_i -> D_i B
+ *
+ * Ascent along stack U (unmatched returns `]_i` above B):
+ * U -> eps | N B | A_i B | B_i B | C_i F_i | U H_i
+ *
+ * A complete reachable path S (an ascent U, followed by a descent `[_i` + any S):
+ * S -> eps | N B | A_i B | B_i B | C_i F_i | U H_i | S K_i
+ * K_i -> C_i B
+ *
+ * Terminals:
  * N -> `normal`
- *
- * S -> A_i S
- * S -> B_i S
  * A_i -> `(_i`
  * B_i -> `)_i`
- *
- * S -> C_i F_i
- * F_i -> S H_i
- * H_i -> D_i S
  * C_i -> `[_i`
  * D_i -> `]_i`
  */
 MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
-	int64_t nonterms_count = 1 + 2 * n_par + 4 * n_bra + (has_normal ? 1 : 0);
+	int64_t nonterms_count = 3 + 2 * n_par + 5 * n_bra + (has_normal ? 1 : 0);
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 
-	int64_t rules_count = 1;
+	int64_t rules_count = 3;
 	if (has_normal) {
-		rules_count += 2;
-	}
-	if (n_par > 0) {
 		rules_count += 4;
 	}
+	if (n_par > 0) {
+		rules_count += 8;
+	}
 	if (n_bra > 0) {
-		rules_count += 5;
+		rules_count += 11;
 	}
 
 	MRGrammarConfig config = {.kind = MR_GRAMMAR_BETA, .exclude_index = -1};
@@ -45,7 +49,9 @@ MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 
 	// --- Nonterminal IDs ---
 
-	int32_t offset = 1;
+	int32_t NT_U = 1;
+	int32_t NT_B = 2;
+	int32_t offset = 3;
 
 	// Blocks for parenthesis
 	int32_t A_0 = (n_par > 0) ? offset : -1;
@@ -61,6 +67,8 @@ MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	int32_t F_0 = (n_bra > 0) ? offset : -1;
 	offset += (int32_t)n_bra;
 	int32_t H_0 = (n_bra > 0) ? offset : -1;
+	offset += (int32_t)n_bra;
+	int32_t K_0 = (n_bra > 0) ? offset : -1;
 	offset += (int32_t)n_bra;
 
 	int32_t NT_N = has_normal ? (int32_t)(nonterms_count - 1) : -1;
@@ -81,60 +89,130 @@ MRGrammar_t dyck_beta_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 
 	// --- Rules ---
 
-	// S -> eps
-	rules[r++] = (LAGraph_rule_EWCNF){NT_START, -1, -1, 0, 0};
+	// Epsilon rules
+	rules[r++] = (LAGraph_rule_EWCNF){NT_B, -1, -1, 0, 0, NULL};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_U, -1, -1, 0, 0, NULL};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_START, -1, -1, 0, 0, NULL};
 
 	if (has_normal) {
-		// S -> N S
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_N, NT_START, 0, 0};
+		// B -> N B, U -> N B, S -> N B
+		rules[r++] = (LAGraph_rule_EWCNF){NT_B, NT_N, NT_B, 0, 0, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){NT_U, NT_N, NT_B, 0, 0, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_N, NT_B, 0, 0, NULL};
 		// N -> `normal`
-		rules[r++] = (LAGraph_rule_EWCNF){NT_N, TERM(t_normal_idx), -1, 0, 0};
+		rules[r++] = (LAGraph_rule_EWCNF){NT_N, TERM(t_normal_idx), -1, 0, 0, NULL};
 	}
 
 	// Rules for parentheses
 	if (n_par > 0) {
 		uint32_t count = (uint32_t)n_par;
 
-		// S -> A_i S
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, A_0, NT_START, count,
-										  LAGraph_EWNCF_INDEX_PROD_A};
-		// S -> B_i S
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, B_0, NT_START, count,
-										  LAGraph_EWNCF_INDEX_PROD_A};
-		// A_i -> `(_i`
-		rules[r++] = (LAGraph_rule_EWCNF){A_0, TERM(t_par_open_0), -1, count,
+		// A_i B and B_i B across B, U, S
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_B, A_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_B, B_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_U, A_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_U, B_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_START, A_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_START, B_0, NT_B, count, LAGraph_EWNCF_INDEX_PROD_A, NULL};
+
+		// A_i -> `(_i`, B_i -> `)_i`
+		rules[r++] = (LAGraph_rule_EWCNF){A_0,
+										  TERM(t_par_open_0),
+										  -1,
+										  count,
 										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_A};
-		// B_i -> `)_i`
-		rules[r++] = (LAGraph_rule_EWCNF){B_0, TERM(t_par_close_0), -1, count,
+											  LAGraph_EWNCF_INDEX_PROD_A,
+										  NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){B_0,
+										  TERM(t_par_close_0),
+										  -1,
+										  count,
 										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_A};
+											  LAGraph_EWNCF_INDEX_PROD_A,
+										  NULL};
 	}
 
 	// Rules for brackets
 	if (n_bra > 0) {
 		uint32_t count = (uint32_t)n_bra;
 
-		// S -> C_i F_i
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, C_0, F_0, count,
-										  LAGraph_EWNCF_INDEX_PROD_A |
-											  LAGraph_EWNCF_INDEX_PROD_B};
-		// F_i -> S H_i
-		rules[r++] = (LAGraph_rule_EWCNF){F_0, NT_START, H_0, count,
+		// C_i F_i across B, U, S
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_B,
+			C_0,
+			F_0,
+			count,
+			LAGraph_EWNCF_INDEX_PROD_A | LAGraph_EWNCF_INDEX_PROD_B,
+			NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_U,
+			C_0,
+			F_0,
+			count,
+			LAGraph_EWNCF_INDEX_PROD_A | LAGraph_EWNCF_INDEX_PROD_B,
+			NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_START,
+			C_0,
+			F_0,
+			count,
+			LAGraph_EWNCF_INDEX_PROD_A | LAGraph_EWNCF_INDEX_PROD_B,
+			NULL};
+
+		// U -> U H_i, S -> U H_i
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_U, NT_U, H_0, count, LAGraph_EWNCF_INDEX_PROD_B, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_START, NT_U, H_0, count, LAGraph_EWNCF_INDEX_PROD_B, NULL};
+
+		// S -> S K_i, K_i -> C_i B
+		rules[r++] = (LAGraph_rule_EWCNF){
+			NT_START, NT_START, K_0, count, LAGraph_EWNCF_INDEX_PROD_B, NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			K_0,
+			C_0,
+			NT_B,
+			count,
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A,
+			NULL};
+
+		// F_i -> B H_i, H_i -> D_i B
+		rules[r++] = (LAGraph_rule_EWCNF){
+			F_0,
+			NT_B,
+			H_0,
+			count,
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_B,
+			NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){
+			H_0,
+			D_0,
+			NT_B,
+			count,
+			LAGraph_EWNCF_INDEX_NONTERM | LAGraph_EWNCF_INDEX_PROD_A,
+			NULL};
+
+		// C_i -> `[_i`, D_i -> `]_i`
+		rules[r++] = (LAGraph_rule_EWCNF){C_0,
+										  TERM(t_bra_open_0),
+										  -1,
+										  count,
 										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_B};
-		// H_i -> D_i S
-		rules[r++] = (LAGraph_rule_EWCNF){H_0, D_0, NT_START, count,
+											  LAGraph_EWNCF_INDEX_PROD_A,
+										  NULL};
+		rules[r++] = (LAGraph_rule_EWCNF){D_0,
+										  TERM(t_bra_close_0),
+										  -1,
+										  count,
 										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_A};
-		// C_i -> `[_i`
-		rules[r++] = (LAGraph_rule_EWCNF){C_0, TERM(t_bra_open_0), -1, count,
-										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_A};
-		// D_i -> `]_i`
-		rules[r++] = (LAGraph_rule_EWCNF){D_0, TERM(t_bra_close_0), -1, count,
-										  LAGraph_EWNCF_INDEX_NONTERM |
-											  LAGraph_EWNCF_INDEX_PROD_A};
+											  LAGraph_EWNCF_INDEX_PROD_A,
+										  NULL};
 	}
 
 	return gr;

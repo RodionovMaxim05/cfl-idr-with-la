@@ -35,21 +35,20 @@ MRGrammar_t get_alpha_grammar(IdrGrammarType grammar_type, int64_t n_par,
 
 MRGrammar_t get_beta_grammar(IdrGrammarType grammar_type, int64_t n_par,
 							 int64_t n_bra, bool has_normal) {
-	switch (grammar_type) {
-		case IDR_PARITY:
-		case IDR_PROJECT:
-		case IDR_EXCLUDE:
-			return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 1);
-		case IDR_PARITY2:
-		case IDR_SE:
-		case IDR_ALL:
-			return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 2);
-		// case IDR_SE:
-		// case IDR_ALL:
-		// 	return dyck_beta_grammar_k_parity_se(n_par, n_bra, has_normal, 2);
-		default:
-			return dyck_beta_grammar(n_par, n_bra, has_normal);
-	}
+	return dyck_beta_grammar(n_par, n_bra, has_normal);
+
+	// switch (grammar_type) {
+	// 	case IDR_PARITY:
+	// 	case IDR_PROJECT:
+	// 	case IDR_EXCLUDE:
+	// 		return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 1);
+	// 	case IDR_PARITY2:
+	// 	case IDR_SE:
+	// 	case IDR_ALL:
+	// 		return dyck_beta_grammar_k_parity(n_par, n_bra, has_normal, 2);
+	// 	default:
+	// 		return dyck_beta_grammar(n_par, n_bra, has_normal);
+	// }
 }
 
 static void pat_free(LAGraph_rule_Pat *pat) {
