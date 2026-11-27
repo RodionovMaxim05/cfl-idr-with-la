@@ -218,6 +218,28 @@ MRGrammar_t dyck_alpha_grammar(int64_t n_par, int64_t n_bra, bool has_normal) {
 	return gr;
 }
 
+/**
+ * Start: S_0
+ *
+ * Basic balanced language with bracket parity mask m:
+ * B_m -> eps (m = 0) | N B_m | M_{b,j} B_{m ^ (1 << b)} | E_{im,i} B_{m ^ im}
+ * E_{im,i} -> A_i G_{im,i}
+ * G_{im,i} -> B_{im} B_i
+ *
+ * Ascent along stack U (unmatched returns `)_i` above B):
+ * U_m -> eps (m = 0) | N B_m | M_{b,j} B_{m ^ (1 << b)} | E_{im,i} B_{m ^ im} |
+ * H_{im,i} B_{m ^ im} H_{im,i} -> U_{im} B_i
+ *
+ * A complete reachable path S (an ascent U, followed by a descent `(_i` + any S):
+ * S_m -> eps (m = 0) | N B_m | M_{b,j} B_{m ^ (1 << b)} | E_{im,i} B_{m ^ im} |
+ * H_{im,i} B_{m ^ im} | K_{im,i} B_{m ^ im} K_{im,i} -> S_{im} A_i
+ *
+ * Terminals:
+ * N -> `normal`
+ * A_i -> `(_i`
+ * B_i -> `)_i`
+ * M_{b,j} -> `[_{b,j}` | `]_{b,j}`
+ */
 MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 										bool has_normal, int64_t k) {
 	int64_t num_states = (int64_t)1 << k; // N = 2^k
@@ -241,15 +263,15 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 	}
 
 	// Nonterminal counts:
-	// S_mask:             num_states
-	// A_i, B_i:           2 * n_par
-	// C_i, D_i:           2 * n_bra
-	// E_{im,i}, G_{im,i}: for each par i, for each innerMask im,
-	//   we need E and G.
-	//   Total: 2 * n_par * num_states
-	// N:                  1 (if has_normal)
-	int64_t nonterms_count = num_states + 2 * n_par + n_bra +
-							 2 * (n_par * num_states) + (has_normal ? 1 : 0);
+	// S_mask, U_mask, B_mask:                 3 * num_states
+	// A_i, B_i:                               2 * n_par
+	// M_{b,j}:                                n_bra
+	// E_{im,i}, G_{im,i}, H_{im,i}, K_{im,i}: for each par i, for each innerMask im,
+	//   we need E, G, H, and K.
+	//   Total: 4 * n_par * num_states
+	// N:                                      1 (if has_normal)
+	int64_t nonterms_count = 3 * num_states + 2 * n_par + n_bra +
+							 4 * (n_par * num_states) + (has_normal ? 1 : 0);
 
 	// Terminal counts:
 	// par_open_i, par_close_i: 2 * n_par
@@ -258,18 +280,22 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 	int64_t terms_count = 2 * n_par + 2 * n_bra + (has_normal ? 1 : 0);
 
 	// Rules count:
-	// S_0 -> eps:                       1
-	// S_m -> N S_m:                     1 (if has_normal)
-	// N -> `normal`                     1 (if has_normal)
-	// Terminal rules for A_i, B_i:      2 (if n_par > 0)
-	// M_{b,j} -> open_{b,j} by groups:  active_groups
-	// M_{b,j} -> close_{b,j} by groups: active_groups
-	// S_m -> M_{b,j} S_{1 << b}:        active_groups
-	// E_{im,i} -> A_i G_{im,i}:         1 (if n_par > 0)
-	// G_{im,i} -> S_im B_i:             1 (if n_par > 0)
-	// S_m -> E_{im,i} S_{m ^ im}:       1 (if n_par > 0)
+	// B_0 -> eps, U_0 -> eps, S_0 -> eps:            3
+	// B_m -> N B_m, U_m -> N B_m, S_m -> N B_m:      3 (if has_normal)
+	// N -> `normal`:                                 1 (if has_normal)
+	// Terminal rules for A_i, B_i:                   2 (if n_par > 0)
+	// M_{b,j} -> open_{b,j} by groups:               active_groups
+	// M_{b,j} -> close_{b,j} by groups:              active_groups
+	// B_m, U_m, S_m -> M_{b,j} B_{m ^ (1 << b)}:     3 * active_groups
+	// E_{im,i} -> A_i G_{im,i}:                      1 (if n_par > 0)
+	// G_{im,i} -> B_im B_i:                          1 (if n_par > 0)
+	// H_{im,i} -> U_im B_i:                          1 (if n_par > 0)
+	// K_{im,i} -> S_im A_i:                          1 (if n_par > 0)
+	// B_m, U_m, S_m -> E_{im,i} B_{m ^ im}:          3 (if n_par > 0)
+	// U_m, S_m -> H_{im,i} B_{m ^ im}:               2 (if n_par > 0)
+	// S_m -> K_{im,i} B_{m ^ im}:                    1 (if n_par > 0)
 	int64_t rules_to_alloc =
-		1 + (has_normal ? 2 : 0) + 3 * active_groups + (n_par > 0 ? 5 : 0);
+		3 + (has_normal ? 4 : 0) + 5 * active_groups + (n_par > 0 ? 12 : 0);
 
 	MRGrammarConfig config = {.kind = MR_GRAMMAR_ALPHA, .exclude_index = -1};
 	MRGrammar_t gr =
@@ -283,7 +309,9 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 
 	// --- Nonterminal IDs ---
 
-	int32_t offset = (int32_t)num_states;
+	int32_t NT_U = (int32_t)num_states;
+	int32_t NT_B = (int32_t)(2 * num_states);
+	int32_t offset = (int32_t)(3 * num_states);
 
 	int32_t A_0 = (n_par > 0) ? offset : -1;
 	offset += (int32_t)n_par;
@@ -299,6 +327,10 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 	int32_t E_base = offset;
 	offset += (int32_t)(n_par * num_states);
 	int32_t G_base = offset;
+	offset += (int32_t)(n_par * num_states);
+	int32_t H_base = offset;
+	offset += (int32_t)(n_par * num_states);
+	int32_t K_base = offset;
 	offset += (int32_t)(n_par * num_states);
 	int32_t NT_N = has_normal ? (int32_t)(nonterms_count - 1) : -1;
 
@@ -324,15 +356,37 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 
 	// --- PAT Roles ---
 	LAGraph_Pat_role S_role = {LAGraph_PAT_SYM_S, NT_START, /*mask_stride=*/1, 0, 0};
+	LAGraph_Pat_role U_role = {LAGraph_PAT_SYM_S, NT_U, /*mask_stride=*/1, 0, 0};
+	LAGraph_Pat_role B_role = {LAGraph_PAT_SYM_S, NT_B, /*mask_stride=*/1, 0, 0};
 	LAGraph_Pat_role E_role = {LAGraph_PAT_SYM_PATILY, E_base, /*mask_stride=*/n_par,
 							   0, n_par};
 	LAGraph_Pat_role G_role = {LAGraph_PAT_SYM_PATILY, G_base, /*mask_stride=*/n_par,
+							   0, n_par};
+	LAGraph_Pat_role H_role = {LAGraph_PAT_SYM_PATILY, H_base, /*mask_stride=*/n_par,
+							   0, n_par};
+	LAGraph_Pat_role K_role = {LAGraph_PAT_SYM_PATILY, K_base, /*mask_stride=*/n_par,
 							   0, n_par};
 	LAGraph_Pat_role plain = {LAGraph_PAT_SYM_PLAIN, 0, 0, 0, 0};
 
 	// --- Rules Generation ---
 
-	const LAGraph_rule_Pat *d_eps =
+	const LAGraph_rule_Pat *d_eps_b =
+		pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_EPS,
+								   .group = LAGraph_PAT_GROUP_XOR,
+								   .masks = (uint32_t)num_states,
+								   .states = R,
+								   .role = {B_role, plain, plain},
+								   .block_symbol = NT_B});
+
+	const LAGraph_rule_Pat *d_eps_u =
+		pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_EPS,
+								   .group = LAGraph_PAT_GROUP_XOR,
+								   .masks = (uint32_t)num_states,
+								   .states = R,
+								   .role = {U_role, plain, plain},
+								   .block_symbol = NT_U});
+
+	const LAGraph_rule_Pat *d_eps_s =
 		pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_EPS,
 								   .group = LAGraph_PAT_GROUP_XOR,
 								   .masks = (uint32_t)num_states,
@@ -340,23 +394,42 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 								   .role = {S_role, plain, plain},
 								   .block_symbol = NT_START});
 
-	// S_0 -> eps
-	rules[r++] = (LAGraph_rule_EWCNF){NT_START, -1, -1, 0, 0, d_eps};
+	// B_0 -> eps, U_0 -> eps, S_0 -> eps
+	rules[r++] = (LAGraph_rule_EWCNF){NT_B, -1, -1, 0, 0, d_eps_b};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_U, -1, -1, 0, 0, d_eps_u};
+	rules[r++] = (LAGraph_rule_EWCNF){NT_START, -1, -1, 0, 0, d_eps_s};
 
 	if (has_normal) {
-		const LAGraph_rule_Pat *d_scale =
-			has_normal ? pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_SCALE,
-													.group = LAGraph_PAT_GROUP_XOR,
-													.masks = (uint32_t)num_states,
-													.states = R,
-													.idx_count = 1,
-													.role = {S_role, plain, S_role}})
-					   : NULL;
+		const LAGraph_rule_Pat *d_scale_b =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_SCALE,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = 1,
+									   .role = {B_role, plain, B_role}});
 
+		const LAGraph_rule_Pat *d_scale_u =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_SCALE,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = 1,
+									   .role = {U_role, plain, B_role}});
+
+		const LAGraph_rule_Pat *d_scale_s =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_SCALE,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = 1,
+									   .role = {S_role, plain, B_role}});
+
+		// B_m -> N B_m, U_m -> N B_m, S_m -> N B_m
+		rules[r++] = (LAGraph_rule_EWCNF){NT_B, NT_N, NT_B, 0, 0, d_scale_b};
+		rules[r++] = (LAGraph_rule_EWCNF){NT_U, NT_N, NT_B, 0, 0, d_scale_u};
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_N, NT_B, 0, 0, d_scale_s};
 		// N -> `normal`
 		rules[r++] = (LAGraph_rule_EWCNF){NT_N, TERM(t_normal_idx), -1, 0, 0, NULL};
-		// S_m -> N S_m
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, NT_N, NT_START, 0, 0, d_scale};
 	}
 
 	// Terminal rules for A_i, B_i
@@ -403,56 +476,145 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 											  LAGraph_EWNCF_INDEX_PROD_A,
 										  NULL};
 
-		const LAGraph_rule_Pat *d_conv =
+		const LAGraph_rule_Pat *d_conv_b =
 			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
 									   .group = LAGraph_PAT_GROUP_XOR,
 									   .masks = (uint32_t)num_states,
 									   .states = R,
 									   .idx_count = (uint32_t)bra_group_size[b],
-									   .role = {S_role, plain, S_role},
+									   .role = {B_role, plain, B_role},
 									   .element = (int64_t)1 << b});
 
-		// S_m -> M_{b, j} S_{m ^ (1 << b)}
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START,
+		const LAGraph_rule_Pat *d_conv_u =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)bra_group_size[b],
+									   .role = {U_role, plain, B_role},
+									   .element = (int64_t)1 << b});
+
+		const LAGraph_rule_Pat *d_conv_s =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)bra_group_size[b],
+									   .role = {S_role, plain, B_role},
+									   .element = (int64_t)1 << b});
+
+		// B_m -> M_{b, j} B_{m ^ (1 << b)}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_B,
 										  M_group_base[b],
-										  NT_START,
+										  NT_B,
 										  (uint32_t)bra_group_size[b],
 										  LAGraph_EWNCF_INDEX_PROD_A,
-										  d_conv};
+										  d_conv_b};
+
+		// U_m -> M_{b, j} B_{m ^ (1 << b)}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_U,
+										  M_group_base[b],
+										  NT_B,
+										  (uint32_t)bra_group_size[b],
+										  LAGraph_EWNCF_INDEX_PROD_A,
+										  d_conv_u};
+
+		// S_m -> M_{b, j} B_{m ^ (1 << b)}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START,
+										  M_group_base[b],
+										  NT_B,
+										  (uint32_t)bra_group_size[b],
+										  LAGraph_EWNCF_INDEX_PROD_A,
+										  d_conv_s};
 	}
 
 	// --- Alpha transition rules ---
 	if (n_par > 0) {
 		const LAGraph_rule_Pat *d_left =
-			(n_par > 0)
-				? pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_LEFT,
-											 .group = LAGraph_PAT_GROUP_XOR,
-											 .masks = (uint32_t)num_states,
-											 .states = R,
-											 .idx_count = (uint32_t)n_par,
-											 .role = {E_role, plain, G_role}})
-				: NULL;
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_LEFT,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {E_role, plain, G_role}});
 
-		const LAGraph_rule_Pat *d_right =
-			(n_par > 0)
-				? pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_RIGHT,
-											 .group = LAGraph_PAT_GROUP_XOR,
-											 .masks = (uint32_t)num_states,
-											 .states = R,
-											 .idx_count = (uint32_t)n_par,
-											 .role = {G_role, S_role, plain}})
-				: NULL;
+		const LAGraph_rule_Pat *d_right_gb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_RIGHT,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {G_role, B_role, plain}});
 
-		const LAGraph_rule_Pat *d_alpha =
-			(n_par > 0)
-				? pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
-											 .group = LAGraph_PAT_GROUP_XOR,
-											 .masks = (uint32_t)num_states,
-											 .states = R,
-											 .idx_count = (uint32_t)n_par,
-											 .role = {S_role, E_role, S_role},
-											 .element = LAGraph_PAT_ALL_ELEMENTS})
-				: NULL;
+		const LAGraph_rule_Pat *d_right_hb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_RIGHT,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {H_role, U_role, plain}});
+
+		const LAGraph_rule_Pat *d_right_kb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_RIGHT,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {K_role, S_role, plain}});
+
+		const LAGraph_rule_Pat *d_alpha_beb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {B_role, E_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
+
+		const LAGraph_rule_Pat *d_alpha_ueb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {U_role, E_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
+
+		const LAGraph_rule_Pat *d_alpha_seb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {S_role, E_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
+
+		const LAGraph_rule_Pat *d_alpha_uhb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {U_role, H_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
+
+		const LAGraph_rule_Pat *d_alpha_shb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {S_role, H_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
+
+		const LAGraph_rule_Pat *d_alpha_skb =
+			pat_new((LAGraph_rule_Pat){.kind = LAGraph_PAT_CONV,
+									   .group = LAGraph_PAT_GROUP_XOR,
+									   .masks = (uint32_t)num_states,
+									   .states = R,
+									   .idx_count = (uint32_t)n_par,
+									   .role = {S_role, K_role, B_role},
+									   .element = LAGraph_PAT_ALL_ELEMENTS});
 
 		// LEFT: E_{im,i} -> A_i G_{im,i}
 		rules[r++] = (LAGraph_rule_EWCNF){E_base,
@@ -464,17 +626,50 @@ MRGrammar_t dyck_alpha_grammar_k_parity(int64_t n_par, int64_t n_bra,
 											  LAGraph_EWNCF_INDEX_PROD_B,
 										  d_left};
 
-		// RIGHT: G_{im,i} -> S_im B_i
+		// RIGHT: G_{im,i} -> B_im B_i
 		rules[r++] = (LAGraph_rule_EWCNF){G_base,
-										  NT_START,
+										  NT_B,
 										  B_0,
 										  (uint32_t)n_par,
 										  LAGraph_EWNCF_INDEX_NONTERM |
 											  LAGraph_EWNCF_INDEX_PROD_B,
-										  d_right};
+										  d_right_gb};
 
-		// CONV ALL: S_m -> E_{im, i} S_{m ^ im}
-		rules[r++] = (LAGraph_rule_EWCNF){NT_START, E_base, NT_START, 0, 0, d_alpha};
+		// RIGHT: H_{im,i} -> U_im B_i
+		rules[r++] = (LAGraph_rule_EWCNF){H_base,
+										  NT_U,
+										  B_0,
+										  (uint32_t)n_par,
+										  LAGraph_EWNCF_INDEX_NONTERM |
+											  LAGraph_EWNCF_INDEX_PROD_B,
+										  d_right_hb};
+
+		// RIGHT: K_{im,i} -> S_im A_i
+		rules[r++] = (LAGraph_rule_EWCNF){K_base,
+										  NT_START,
+										  A_0,
+										  (uint32_t)n_par,
+										  LAGraph_EWNCF_INDEX_NONTERM |
+											  LAGraph_EWNCF_INDEX_PROD_B,
+										  d_right_kb};
+
+		// CONV ALL: B_m -> E_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_B, E_base, NT_B, 0, 0, d_alpha_beb};
+
+		// CONV ALL: U_m -> E_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_U, E_base, NT_B, 0, 0, d_alpha_ueb};
+
+		// CONV ALL: S_m -> E_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, E_base, NT_B, 0, 0, d_alpha_seb};
+
+		// CONV ALL: U_m -> H_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_U, H_base, NT_B, 0, 0, d_alpha_uhb};
+
+		// CONV ALL: S_m -> H_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, H_base, NT_B, 0, 0, d_alpha_shb};
+
+		// CONV ALL: S_m -> K_{im, i} B_{m ^ im}
+		rules[r++] = (LAGraph_rule_EWCNF){NT_START, K_base, NT_B, 0, 0, d_alpha_skb};
 	}
 
 	return gr;

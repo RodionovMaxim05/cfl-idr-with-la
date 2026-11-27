@@ -226,12 +226,12 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 	if (grammar_type == IDR_EXCLUDE || grammar_type == IDR_ALL) {
 		const IdrGraph *cur_graph = final_graph;
 
-		for (int64_t ex_par = 0; ex_par < cur_graph->n_par; ex_par++) {
+		for (int64_t ex_bra = 0; ex_bra < cur_graph->n_bra; ex_bra++) {
 			int64_t cur_n_par = cur_graph->n_par;
 			int64_t cur_n_bra = cur_graph->n_bra;
 
 			MRGrammar_t exclude_grammar =
-				get_exclude_grammar(cur_n_par, cur_n_bra, has_normal, ex_par);
+				get_exclude_grammar(cur_n_par, cur_n_bra, has_normal, ex_bra);
 			if (!exclude_grammar.rules) {
 				info = GrB_OUT_OF_MEMORY;
 				goto cleanup;
@@ -249,7 +249,7 @@ static GrB_Info mutual_refinement_single(GrB_Matrix *result, const IdrGraph *gra
 			GrB_Matrix cur_reach = NULL;
 
 			GRB_TRY(run_cfl_step(cur_graph, exclude_grammar,
-								 GRAMMAR_TAG_EXCLUDE_BASE + (uint32_t)ex_par,
+								 GRAMMAR_TAG_EXCLUDE_BASE + (uint32_t)ex_bra,
 								 target_path, cache, &cur_reach, &exclude_edges,
 								 &target_found));
 			grammar_free(&exclude_grammar);
